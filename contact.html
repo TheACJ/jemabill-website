@@ -74,6 +74,19 @@
     @media (max-width: 900px) {
       .contact-grid {
         grid-template-columns: 1fr;
+        gap: 30px;
+      }
+    }
+    @media (max-width: 600px) {
+      .contact-hero {
+        padding: 40px 0 24px;
+      }
+      .contact-info-card, .contact-form-card {
+        padding: 22px 18px;
+        border-radius: 20px;
+      }
+      .contact-grid {
+        padding-bottom: 60px;
       }
     }
   </style>
@@ -110,9 +123,9 @@
 
   <div class="container contact-hero">
     <span class="section-tag">GET IN TOUCH</span>
-    <h1 style="font-size:2.8rem; font-weight:800; color:var(--dark); margin-bottom:12px;">We're Here to Help</h1>
-    <p style="color:var(--text-muted); font-size:1.1rem; max-width:600px; margin:0 auto;">
-      Have a question about your bill payment, want to integrate our API, or need custom enterprise bulk SMS? Reach out to our dedicated team.
+    <h1 class="page-hero-title">We're Here to Help</h1>
+    <p class="page-hero-subtitle">
+      Have a question about your bill payment, want to partner with us, or need enterprise bulk SMS? Reach out to our dedicated team.
     </p>
   </div>
 
