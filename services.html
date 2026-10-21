@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Services & Coverage — JemaBill</title>
+  <meta name="description" content="Explore JemaBill's complete catalog of automated bill payment, electricity, data, cable TV, and exam PIN services across Nigeria." />
+  <link rel="icon" type="image/png" href="assets/images/favicon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <style>
+    .services-header {
+      padding: 60px 0 40px;
+      text-align: center;
+    }
+    .service-detail-section {
+      padding: 50px 0;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .service-detail-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 50px;
+      align-items: center;
+    }
+    .service-detail-grid.reverse {
+      grid-template-columns: 1fr 1fr;
+    }
+    .service-detail-grid.reverse > :first-child {
+      order: 2;
+    }
+    .service-detail-grid.reverse > :last-child {
+      order: 1;
+    }
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 20px 0 28px;
+    }
+    .feature-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.95rem;
+      color: var(--text-main);
+    }
+    .check-icon {
+      color: var(--primary);
+      font-size: 1.25rem;
+      line-height: 1.3;
+      flex-shrink: 0;
+    }
+    .service-info-card {
+      background-color: #FFFFFF;
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      border: 1px solid var(--border-color);
+      box-shadow: var(--shadow-md);
+    }
+    @media (max-width: 900px) {
+      .service-detail-grid, .service-detail-grid.reverse {
+        grid-template-columns: 1fr;
+      }
+      .service-detail-grid.reverse > :first-child {
+        order: 1;
+      }
+      .service-detail-grid.reverse > :last-child {
+        order: 2;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================= NAVBAR ================= -->
+  <header class="navbar">
+    <div class="container nav-container">
+      <a href="index.html" class="brand-logo">
+        <div class="brand-icon">
+          <svg width="24" height="24" viewBox="0 0 101 95" fill="none">
+            <path d="M17.01 0C16.18.5 14.81 2 16.01 4L20.01 12.5C20.68 13.5 23.01 15.6 27.02 16H35.52V67.04C35.52 70.05 34.52 76.55 27.02 78.05C23.52 78.05 18.41 75.45 18.01 67.04V62.04H1C.67 62.04 0 62.44 0 64.04V70.05C.33 77.72 6.3 93.36 27.52 94.56C34.36 94.73 48.53 91.16 50.53 75.55V2C50.53 1.33 50.13 0 48.53 0H17.01Z" fill="#FFFFFF"/>
+            <path d="M54.04 16.01V0H67.55C77.22 1.33 95.56 8.01 96.56 24.02C97.06 29.02 95.96 40.43 85.56 46.03C92.23 49.53 104.47 59.94 100.07 73.55C99.57 73.55 98.57 90.56 73.55 94.56H45.03C44.36 94.4 43.43 93.76 45.03 92.56C47.53 90.89 52.84 85.86 54.04 79.05H70.55C73.88 79.05 80.95 76.65 82.55 67.04C82.53 67.18 83.05 57.04 70.55 55.54H54.04V40.03H68.05C72.72 39.53 81.65 35.82 80.05 25.02C79.39 22.01 76.05 16.01 68.05 16.01H54.04Z" fill="#C5E76C"/>
+          </svg>
+        </div>
+        <span>JemaBill</span>
+      </a>
+
+      <nav>
+        <ul class="nav-menu">
+          <li><a href="index.html#services" class="nav-link">Overview</a></li>
+          <li><a href="services.html" class="nav-link active">Services</a></li>
+          <li><a href="index.html#security" class="nav-link">Security</a></li>
+          <li><a href="contact.html" class="nav-link">Contact</a></li>
+        </ul>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="index.html#demo" class="btn btn-secondary btn-sm">Try Demo</a>
+        <a href="contact.html" class="btn btn-primary btn-sm">Partner With Us</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="container services-header">
+    <span class="section-tag">CATALOG & INTEGRATIONS</span>
+    <h1 style="font-size:2.8rem; font-weight:800; color:var(--dark); margin-bottom:12px;">Supported Services & DisCo Coverage</h1>
+    <p style="color:var(--text-muted); font-size:1.1rem; max-width:680px; margin:0 auto;">
+      Every service on JemaBill is connected directly to licensed Nigerian utility registries and telecom gateways, backed by automated verification and 99.9% uptime guarantees.
+    </p>
+  </div>
+
+  <main>
+    <!-- Electricity Detail -->
+    <section class="service-detail-section">
+      <div class="container service-detail-grid">
+        <div>
+          <span class="section-tag">UTILITY PAYMENT</span>
+          <h2 style="font-size:2rem; font-weight:700; color:var(--dark); margin-bottom:14px;">Electricity Bill Payments (All 11 DisCos)</h2>
+          <p style="color:var(--text-muted); line-height:1.7;">
+            JemaBill offers comprehensive nationwide coverage across all electricity distribution zones in Nigeria. Both prepaid meter token generation and postpaid bill payments are supported with real-time meter resolution.
+          </p>
+
+          <ul class="feature-list">
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Instant Token Retrieval:</strong> 20-digit prepaid token generated and displayed in under 5 seconds.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Registry Name Validation:</strong> Confirms the customer's full registered name, meter number, and service address before charging.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Delivery Recovery:</strong> Lost your token? Re-fetch it at any time directly through your receipt history without rebuying.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Minimum Amount Enforcement:</strong> Automatically validates provider minimum recharge amounts to prevent failed transactions.</li>
+          </ul>
+
+          <a href="index.html#demo" class="btn btn-primary btn-sm">Test Meter Verification</a>
+        </div>
+
+        <div class="service-info-card">
+          <h3 style="font-size:1.2rem; font-weight:700; margin-bottom:16px;">Supported Electricity Providers</h3>
+          <div class="biller-chips" style="gap:10px;">
+            <span class="biller-chip">Ikeja Electric (IKEDC)</span>
+            <span class="biller-chip">Eko Electricity (EKEDC)</span>
+            <span class="biller-chip">Abuja Electricity (AEDC)</span>
+            <span class="biller-chip">Ibadan Electricity (IBEDC)</span>
+            <span class="biller-chip">Port Harcourt (PHED)</span>
+            <span class="biller-chip">Kaduna Electric (KAEDCO)</span>
+            <span class="biller-chip">Kano Electricity (KEDCO)</span>
+            <span class="biller-chip">Enugu Electricity (EEDC)</span>
+            <span class="biller-chip">Benin Electricity (BEDC)</span>
+            <span class="biller-chip">Yola Electricity (YEDC)</span>
+            <span class="biller-chip">Aba Power (APLE)</span>
+          </div>
+          <div style="margin-top:20px; padding:14px; background:var(--primary-light); border-radius:12px; font-size:0.85rem; color:var(--primary); display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:1.25rem;">lightbulb</span> <span><strong>Coverage Note:</strong> JemaBill covers both Prepaid (MD & Non-MD) and Postpaid meters across all 36 states and the FCT.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Airtime & Data Detail -->
+    <section class="service-detail-section">
+      <div class="container service-detail-grid reverse">
+        <div>
+          <span class="section-tag lime">TELECOM & INTERNET</span>
+          <h2 style="font-size:2rem; font-weight:700; color:var(--dark); margin-bottom:14px;">Mobile Airtime & High-Speed Data</h2>
+          <p style="color:var(--text-muted); line-height:1.7;">
+            Connect instantly to all major Nigerian telecommunication networks. Automated carrier detection ensures that ported numbers are credited without network mismatch errors.
+          </p>
+
+          <ul class="feature-list">
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>All Networks Supported:</strong> MTN, Airtel, Globacom (Glo), and 9mobile.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>SME & Direct Data:</strong> Instant bundles from daily 100MB plans to 100GB monthly packages.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Strict Phone Normalization:</strong> Automatically handles +234, 234, and local phone numbers.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Instant Cashback:</strong> Earn discount margins and instant rewards on every airtime and data purchase.</li>
+          </ul>
+
+          <a href="index.html#demo" class="btn btn-primary btn-sm">Try Airtime Top-Up</a>
+        </div>
+
+        <div class="service-info-card">
+          <h3 style="font-size:1.2rem; font-weight:700; margin-bottom:16px;">Telecommunication Partners</h3>
+          <div class="biller-chips" style="gap:10px;">
+            <span class="biller-chip">MTN Nigeria</span>
+            <span class="biller-chip">Airtel Networks</span>
+            <span class="biller-chip">Globacom (Glo)</span>
+            <span class="biller-chip">9mobile Nigeria</span>
+            <span class="biller-chip">Smile 4G LTE</span>
+            <span class="biller-chip">Spectranet 4G</span>
+          </div>
+          <div style="margin-top:20px; padding:14px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; font-size:0.85rem; color:#475569; display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:1.25rem; color:var(--primary);">bolt</span> <span><strong>Speed Benchmark:</strong> Direct VTPass and telecom carrier integration guarantees airtime delivery in under 3 seconds.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cable TV Detail -->
+    <section class="service-detail-section">
+      <div class="container service-detail-grid">
+        <div>
+          <span class="section-tag">ENTERTAINMENT</span>
+          <h2 style="font-size:2rem; font-weight:700; color:var(--dark); margin-bottom:14px;">Cable TV Subscriptions & Renewals</h2>
+          <p style="color:var(--text-muted); line-height:1.7;">
+            Never miss live football, movies, or favorite series. Renew active subscriptions, clear E16 errors, or upgrade your bouquet in real time.
+          </p>
+
+          <ul class="feature-list">
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Smartcard Name Lookup:</strong> Displays customer name and active bouquet before debit.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Zero Waiting Time:</strong> Decoders are reactivated immediately upon transaction completion.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>All Providers Included:</strong> DSTV, GOtv, StarTimes, and Showmax mobile/pro packages.</li>
+          </ul>
+
+          <a href="index.html#demo" class="btn btn-primary btn-sm">Verify Smartcard</a>
+        </div>
+
+        <div class="service-info-card">
+          <h3 style="font-size:1.2rem; font-weight:700; margin-bottom:16px;">Available Entertainment Bouquets</h3>
+          <div class="biller-chips" style="gap:10px;">
+            <span class="biller-chip">DSTV Premium</span>
+            <span class="biller-chip">DSTV Compact Plus</span>
+            <span class="biller-chip">DSTV Compact</span>
+            <span class="biller-chip">DSTV Confam</span>
+            <span class="biller-chip">DSTV Yanga</span>
+            <span class="biller-chip">GOtv Supa+</span>
+            <span class="biller-chip">GOtv Max</span>
+            <span class="biller-chip">GOtv Jolli</span>
+            <span class="biller-chip">StarTimes Classic</span>
+            <span class="biller-chip">StarTimes Basic</span>
+            <span class="biller-chip">Showmax Pro</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Exam PINs Detail -->
+    <section class="service-detail-section">
+      <div class="container service-detail-grid reverse">
+        <div>
+          <span class="section-tag">EDUCATION</span>
+          <h2 style="font-size:2rem; font-weight:700; color:var(--dark); margin-bottom:14px;">Examination Registration & Result PINs</h2>
+          <p style="color:var(--text-muted); line-height:1.7;">
+            Direct integration with official Nigerian educational and examination councils. Instant candidate PIN issuance and profile verification.
+          </p>
+
+          <ul class="feature-list">
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>WAEC Result Checker:</strong> Official cards with PIN and Serial number.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>NECO Tokens:</strong> Instant result check tokens delivered on screen and via email.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>NABTEB & JAMB:</strong> Direct verification profile codes for UTME and Direct Entry.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Safe Archival:</strong> All purchased PINs are stored permanently in your account.</li>
+          </ul>
+
+          <a href="contact.html" class="btn btn-primary btn-sm">School & Agent Portal</a>
+        </div>
+
+        <div class="service-info-card">
+          <h3 style="font-size:1.2rem; font-weight:700; margin-bottom:16px;">Educational Boards</h3>
+          <div class="biller-chips" style="gap:10px;">
+            <span class="biller-chip">WAEC Direct</span>
+            <span class="biller-chip">NECO Official</span>
+            <span class="biller-chip">NABTEB Board</span>
+            <span class="biller-chip">JAMB UTME / DE</span>
+          </div>
+          <div style="margin-top:20px; padding:14px; background:var(--accent-green-bg); border-radius:12px; font-size:0.85rem; color:#1A883C; display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="font-size:1.25rem;">school</span> <span><strong>School & Cybercafé Bulk Purchase:</strong> Bulk purchase rates available for schools, tutorial centers, and internet cafés.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bulk SMS Detail -->
+    <section class="service-detail-section" style="border-bottom:none;">
+      <div class="container service-detail-grid">
+        <div>
+          <span class="section-tag">ENTERPRISE MESSAGING</span>
+          <h2 style="font-size:2rem; font-weight:700; color:var(--dark); margin-bottom:14px;">Bulk SMS & Transactional Messaging</h2>
+          <p style="color:var(--text-muted); line-height:1.7;">
+            High-throughput enterprise messaging with registered Sender IDs and direct telecom routing, bypassing DND restrictions for transactional alerts.
+          </p>
+
+          <ul class="feature-list">
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Custom Sender ID:</strong> Send under your business or brand identity.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>DND Bypass:</strong> Essential transactional messages, OTPs, and event updates reach all numbers.</li>
+            <li><span class="material-symbols-outlined check-icon">check_circle</span> <strong>Accurate Billing:</strong> GSM-7 standard character counting with transparent unit pricing.</li>
+          </ul>
+
+          <a href="contact.html" class="btn btn-primary btn-sm">Register Custom Sender ID</a>
+        </div>
+
+        <div class="service-info-card">
+          <h3 style="font-size:1.2rem; font-weight:700; margin-bottom:16px;">Messaging Features</h3>
+          <div class="biller-chips" style="gap:10px;">
+            <span class="biller-chip">High-Speed Gateway</span>
+            <span class="biller-chip">Delivery Reports</span>
+            <span class="biller-chip">Phone Number Validation</span>
+            <span class="biller-chip">Direct Routing</span>
+            <span class="biller-chip">Instant Delivery</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <div class="container" style="text-align:center; font-size:0.85rem; color:#8C9CAE;">
+      &copy; 2026 JemaBill Technologies Limited. All rights reserved. • <a href="privacy.html" style="color:#C5E76C;">Privacy Policy</a> • <a href="terms.html" style="color:#C5E76C;">Terms of Service</a>
+    </div>
+  </footer>
+
+</body>
+</html>
