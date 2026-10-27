@@ -4,8 +4,11 @@ Official marketing, utility billing catalog, and compliance portal for **JemaBil
 
 Designed for upstream provider compliance reviews (VTpass, Monnify, PaymentPoint, Hollatags, NaijaResultPins) and customer support.
 
-## Live Website
-- **GitHub Pages**: [https://theacj.github.io/jemabill-website/](https://theacj.github.io/jemabill-website/)
+## Official Production Website
+- **Live Portal**: [https://jemabill.com](https://jemabill.com)
+- **Customer Log In**: [https://jemabill.com/login.html](https://jemabill.com/login.html)
+- **Customer Registration**: [https://jemabill.com/register.html](https://jemabill.com/register.html)
+- **Customer Portal**: [https://jemabill.com/portal.html](https://jemabill.com/portal.html)
 
 ## Features & Services Covered
 - **Electricity Bills**: Prepaid token generation & postpaid bills across all 11 Nigerian DisCos (IKEDC, EKEDC, AEDC, IBEDC, PHED, KAEDCO, KEDCO, EEDC, BEDC, YEDC, APLE).
