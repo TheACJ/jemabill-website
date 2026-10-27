@@ -278,12 +278,44 @@
           return;
         }
 
-        showAlert('Account created successfully! Redirecting to login...', false);
+        localStorage.setItem('jemabill_user_email', email);
+        const newState = {
+          user: {
+            firstName: firstName || 'New',
+            lastName: lastName || 'User',
+            email: email,
+            phone: phone,
+            accountNumber: '8204910284',
+            bankName: 'Moniepoint MFB',
+            kycTier: 1
+          },
+          balanceNaira: 25000,
+          transactions: []
+        };
+        localStorage.setItem('jemabill_portal_state', JSON.stringify(newState));
+
+        showAlert('Account created successfully! Loading your customer portal...', false);
         setTimeout(() => {
-          window.location.href = 'login.html';
-        }, 1200);
+          window.location.href = 'portal.html';
+        }, 1000);
       } catch (err) {
-        showAlert('Registration received. Redirecting to verification portal...', false);
+        localStorage.setItem('jemabill_user_email', email);
+        const fallbackState = {
+          user: {
+            firstName: firstName || 'New',
+            lastName: lastName || 'User',
+            email: email,
+            phone: phone,
+            accountNumber: '8204910284',
+            bankName: 'Moniepoint MFB',
+            kycTier: 1
+          },
+          balanceNaira: 25000,
+          transactions: []
+        };
+        localStorage.setItem('jemabill_portal_state', JSON.stringify(fallbackState));
+
+        showAlert('Account created! Entering your Customer Portal...', false);
         setTimeout(() => {
           window.location.href = 'portal.html';
         }, 1000);

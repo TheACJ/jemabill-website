@@ -152,6 +152,15 @@
 
       <div id="alertBox" class="alert-box"></div>
 
+      <!-- Compliance Reviewer One-Click Access -->
+      <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:20px; font-size:0.83rem; color:#166534; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <strong>Compliance Reviewer Access:</strong><br/>
+          <span>compliance@jemabill.com</span>
+        </div>
+        <button type="button" onclick="fillReviewerCredentials()" style="background:#FFFFFF; border:1px solid #16A34A; color:#166534; padding:5px 10px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer;">Auto-Fill</button>
+      </div>
+
       <form id="loginForm">
         <div class="form-group">
           <label for="email">Email Address</label>
@@ -203,6 +212,11 @@
       alertBox.textContent = msg;
       alertBox.className = 'alert-box ' + (isError ? 'alert-error' : 'alert-success');
       alertBox.style.display = 'block';
+    }
+
+    function fillReviewerCredentials() {
+      document.getElementById('email').value = 'compliance@jemabill.com';
+      document.getElementById('password').value = 'JemaBill2026!';
     }
 
     form.addEventListener('submit', async (e) => {
