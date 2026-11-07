@@ -53,6 +53,13 @@
       margin-bottom: 8px;
       line-height: 1.6;
     }
+    .kyc-callout {
+      background: #E8F5F5;
+      border: 1px solid #B8E2E1;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
   </style>
 </head>
 <body>
@@ -78,7 +85,7 @@
 
   <main class="container legal-content">
     <h1>Privacy Policy</h1>
-    <div class="legal-updated">Last Updated: October 2026 • Nigeria Data Protection Regulation (NDPR) Compliant</div>
+    <div class="legal-updated">Last Updated: November 2026 • Nigeria Data Protection Regulation (NDPR) Compliant</div>
 
     <div class="legal-body">
       <p>
@@ -89,40 +96,53 @@
       <p>In order to provide seamless and verified utility bill payment services, we collect the following categories of information:</p>
       <ul>
         <li><strong>Account Information:</strong> Name, verified email address, Nigerian mobile phone number, and account credentials.</li>
+        <li><strong>Identity Verification Data (KYC):</strong> Government identifiers (BVN, NIN), date of birth, and biometric selfie/liveness frames for verified accounts.</li>
         <li><strong>Utility & Transaction Identifiers:</strong> Electricity meter numbers, customer addresses retrieved from DisCo registries, cable TV smartcard / IUC numbers, candidate exam identifiers, and transaction amounts.</li>
         <li><strong>Technical & Device Data:</strong> IP address, device model, operating system, and unique session tokens to protect against unauthorized access and account takeovers.</li>
       </ul>
 
       <h2 id="ndpr">2. Legal Basis & NDPR Compliance</h2>
       <p>
-        In accordance with the Nigeria Data Protection Act (NDPA) and NDPR, our processing of your personal information is grounded in the following legal bases:
+        In accordance with the Nigeria Data Protection Act (NDPA 2023) and NDPR, our processing of your personal information is grounded in the following legal bases:
       </p>
       <ul>
         <li><strong>Contractual Necessity:</strong> To process your bill payment, communicate with billing registries (e.g. IKEDC, EKEDC, DSTV, WAEC), and deliver your purchased prepaid tokens or service renewals.</li>
-        <li><strong>Legal & Regulatory Obligations:</strong> Compliance with anti-fraud guidelines, tax regulations, and digital service accounting requirements.</li>
+        <li><strong>Legal & Regulatory Obligations:</strong> Compliance with anti-money laundering (AML/CFT) guidelines, customer due diligence (CDD), tax regulations, and digital service accounting requirements.</li>
         <li><strong>Legitimate Interests:</strong> Securing our infrastructure, monitoring service latency, and preventing fraudulent billing attempts.</li>
       </ul>
 
-      <h2>3. How We Use Your Information</h2>
+      <h2>3. Customer Identity Verification (KYC Notice)</h2>
+      <div class="kyc-callout">
+        <p style="margin-bottom: 8px; font-weight: 600; color: #158C8A;">Dedicated KYC Privacy Notice</p>
+        <p style="margin-bottom: 12px; color: #1E293B; font-size: 0.95rem;">
+          When undertaking Tier 1 (BVN/NIN + Date of Birth) or Tier 2 (Biometric Liveness + Manual Review) verification, your identity details are verified securely against official statutory databases via our licensed provider Monnify.
+        </p>
+        <a href="kyc-notice.html" style="color: #158C8A; font-weight: 600; text-decoration: underline; font-size: 0.95rem;">
+          Read the full KYC & Identity Verification Privacy Notice &rarr;
+        </a>
+      </div>
+
+      <h2>4. How We Use Your Information</h2>
       <p>Your data is strictly utilized for the following functional purposes:</p>
       <ul>
         <li>Validating customer details prior to payment authorization to prevent erroneous billing.</li>
+        <li>Verifying account ownership and meeting statutory KYC/AML requirements.</li>
         <li>Issuing, delivering, and archiving official digital payment receipts, prepaid tokens, and examination PINs.</li>
         <li>Providing 24/7 automated transaction reconciliation and delivery recovery.</li>
         <li>Sending security notifications (e.g., password reset OTPs, session alerts).</li>
       </ul>
 
-      <h2>4. Data Sharing & Third-Party Providers</h2>
+      <h2>5. Data Sharing & Third-Party Providers</h2>
       <p>
-        We do not sell, rent, or trade your personal data. We only transmit the minimum required metadata to authorized biller aggregators and utility gateways (such as licensed distribution companies, telecommunications carriers, and examination councils) strictly to fulfill the payment requests you initiate.
+        We do not sell, rent, or trade your personal data. We only transmit the minimum required metadata to authorized biller aggregators, licensed identity verification partners (e.g., Monnify), and utility gateways (such as licensed distribution companies, telecommunications carriers, and examination councils) strictly to fulfill the payment and identity verification requests you initiate.
       </p>
 
-      <h2>5. Data Retention & Security Standards</h2>
+      <h2>6. Data Retention & Security Standards</h2>
       <p>
-        We employ AES-256 encryption at rest and TLS 1.3 encryption in transit for all communications. Your transaction records are maintained in compliance with Nigerian financial record retention standards to allow you to re-retrieve tokens or download official receipts at any time.
+        We employ AES-256 encryption at rest and TLS 1.3 encryption in transit for all communications. Your transaction and KYC records are maintained in compliance with Nigerian financial record retention standards to allow you to re-retrieve tokens or download official receipts at any time.
       </p>
 
-      <h2>6. Your Data Rights</h2>
+      <h2>7. Your Data Rights</h2>
       <p>As a data subject under Nigerian law, you possess the right to:</p>
       <ul>
         <li>Request access to your stored personal data and transaction history.</li>
@@ -131,20 +151,23 @@
         <li>Withdraw consent for marketing communications at any time.</li>
       </ul>
 
-      <h2>7. Contact Our Data Protection Officer</h2>
+      <h2>8. Contact Our Data Protection Officer</h2>
       <p>
         For inquiries, data access requests, or privacy compliance questions, please contact our Data Protection Office at:
       </p>
       <p>
         <strong>Email:</strong> privacy@jemabills.com / customersupport@jemabills.com<br />
-        <strong>Address:</strong> JemaBill Technologies, 5, Anekwe Crescent by Cutix Junction, Abub5 Anekwe Crescent by Cutix Junction, Nnewi, Anambra State, Nigeria.
+        <strong>Address:</strong> JemaBill Technologies, 5, Anekwe Crescent by Cutix Junction, Nnewi, Anambra State, Nigeria.
       </p>
     </div>
   </main>
 
   <footer class="footer">
     <div class="container" style="text-align:center; font-size:0.85rem; color:#8C9CAE;">
-      &copy; 2026 JemaBill Technologies Limited. All rights reserved. • <a href="terms.html" style="color:#C5E76C;">Terms of Service</a>
+      &copy; 2026 JemaBill Technologies Limited. All rights reserved. • 
+      <a href="terms.html" style="color:#C5E76C; margin: 0 8px;">Terms of Service</a> • 
+      <a href="privacy.html" style="color:#C5E76C; margin: 0 8px;">Privacy Policy</a> • 
+      <a href="kyc-notice.html" style="color:#C5E76C; margin: 0 8px;">KYC Privacy Notice</a>
     </div>
   </footer>
 
