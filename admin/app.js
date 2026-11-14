@@ -103,6 +103,11 @@
       { id: 'aud_1', actor: 'admin@jemabill.com', action: 'KYC_APPROVE', entity: 'KycRecord:kyc_9901', timestamp: '2026-11-13T21:40:00Z', reason: 'Selfie biometric similarity verified at 94%' },
       { id: 'aud_2', actor: 'admin@jemabill.com', action: 'SETTINGS_UPDATE', entity: 'Setting:kyc.partialNameScoreBar', timestamp: '2026-11-13T19:25:00Z', reason: 'Tightened threshold for improved fraud detection' },
       { id: 'aud_3', actor: 'system_monitor', action: 'PROVIDER_BALANCE_CHECK', entity: 'Provider:VTpass', timestamp: '2026-11-13T18:00:00Z', reason: 'Hourly automated float check' }
+    ],
+    virtualCards: [
+      { id: 'vc_89123', userId: 'usr_01', userName: 'Chinedu Okafor', last4: '8201', brand: 'Mastercard (USD)', status: 'ACTIVE', balanceKobo: 437750, balanceUsd: 5.00, createdAt: '2026-11-14 14:20' },
+      { id: 'vc_89124', userId: 'usr_02', userName: 'Amina Bello', last4: '3351', brand: 'Mastercard (USD)', status: 'ACTIVE', balanceKobo: 875500, balanceUsd: 10.00, createdAt: '2026-11-14 16:45' },
+      { id: 'vc_89125', userId: 'usr_03', userName: 'Tunde Bakare', last4: '9012', brand: 'Mastercard (USD)', status: 'FROZEN', balanceKobo: 120000, balanceUsd: 1.37, createdAt: '2026-11-13 11:10' }
     ]
   };
 
@@ -180,6 +185,7 @@
     if (endpoint.startsWith('/admin/providers/health')) return { success: true, data: MOCK_DATA.providers };
     if (endpoint.startsWith('/admin/settings')) return { success: true, data: MOCK_DATA.settings };
     if (endpoint.startsWith('/admin/audit-log')) return { success: true, data: MOCK_DATA.auditLogs };
+    if (endpoint.startsWith('/admin/virtual-cards')) return { success: true, data: MOCK_DATA.virtualCards };
     return { success: true, data: {} };
   }
 
@@ -330,6 +336,9 @@
         break;
       case 'kyc':
         await renderKycQueue(container);
+        break;
+      case 'virtual-cards':
+        await renderVirtualCards(container);
         break;
       case 'users':
         await renderUsers(container);
@@ -1161,6 +1170,150 @@
       </div>
     `;
   }
+
+  // 9. Virtual Cards Screen (StroWallet USD Cards)
+  async function renderVirtualCards(container) {
+    const res = await apiRequest('/admin/virtual-cards');
+    const cards = res.data || MOCK_DATA.virtualCards || [];
+
+    const totalCards = cards.length;
+    const activeCards = cards.filter(c => c.status === 'ACTIVE').length;
+    const frozenCards = cards.filter(c => c.status === 'FROZEN').length;
+    const totalFloatUsd = cards.reduce((acc, c) => acc + (c.balanceUsd || 0), 0);
+
+    container.innerHTML = `
+      <div class="metrics-grid" style="margin-bottom: 24px;">
+        <div class="metric-card">
+          <div class="metric-title">Total Virtual Cards</div>
+          <div class="metric-value">${totalCards}</div>
+          <div class="metric-sub" style="color:var(--text-dim);">Issued USD Mastercards</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Active Cards</div>
+          <div class="metric-value" style="color:var(--success);">${activeCards}</div>
+          <div class="metric-sub" style="color:var(--text-dim);">Ready for international spend</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Frozen Cards</div>
+          <div class="metric-value" style="color:var(--warning);">${frozenCards}</div>
+          <div class="metric-sub" style="color:var(--text-dim);">Temporarily locked</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Total Float (USD)</div>
+          <div class="metric-value" style="color:var(--accent-lime);">$${totalFloatUsd.toFixed(2)}</div>
+          <div class="metric-sub" style="color:var(--text-dim);">StroWallet cardholder float</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="material-symbols-outlined">search</span>
+          <input type="text" id="cards-search" placeholder="Search by user, card ID, last 4..." />
+        </div>
+        <div class="filters-group">
+          <select class="filter-select" id="cards-status-filter">
+            <option value="ALL">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="FROZEN">Frozen</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="virtual-cards-table">
+          <thead>
+            <tr>
+              <th>Card ID</th>
+              <th>Cardholder</th>
+              <th>Card Details</th>
+              <th>Balance</th>
+              <th>Created</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cards.map(c => `
+              <tr data-card-id="${c.id}" data-status="${c.status}" data-search="${(c.userName + ' ' + c.id + ' ' + c.last4).toLowerCase()}">
+                <td><code>${c.id}</code></td>
+                <td>
+                  <strong>${c.userName}</strong>
+                  <div style="font-size:0.75rem; color:var(--text-dim);">${c.userId}</div>
+                </td>
+                <td>
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <span class="material-symbols-outlined" style="font-size:1.1rem; color:var(--accent-lime);">credit_card</span>
+                    <span>•••• ${c.last4}</span>
+                  </div>
+                  <div style="font-size:0.75rem; color:var(--text-muted);">${c.brand}</div>
+                </td>
+                <td>
+                  <strong style="color:var(--accent-lime);">$${(c.balanceUsd || 0).toFixed(2)}</strong>
+                  <div style="font-size:0.75rem; color:var(--text-dim);">₦${((c.balanceKobo || 0) / 100).toLocaleString('en-NG')}</div>
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${c.createdAt || '—'}</td>
+                <td>
+                  <span class="badge ${c.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${c.status}</span>
+                </td>
+                <td>
+                  ${c.status === 'ACTIVE' ? `
+                    <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-color: rgba(239, 68, 68, 0.4); color: var(--danger);" onclick="window.adminFreezeCard('${c.id}')">
+                      Freeze
+                    </button>
+                  ` : `
+                    <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="window.adminUnfreezeCard('${c.id}')">
+                      Unfreeze
+                    </button>
+                  `}
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    // Search and filter handlers
+    const searchInput = document.getElementById('cards-search');
+    const statusFilter = document.getElementById('cards-status-filter');
+    const tableRows = container.querySelectorAll('#virtual-cards-table tbody tr');
+
+    function filterTable() {
+      const q = (searchInput?.value || '').toLowerCase().trim();
+      const st = statusFilter?.value || 'ALL';
+
+      tableRows.forEach(row => {
+        const textMatch = !q || row.getAttribute('data-search').includes(q);
+        const statusMatch = st === 'ALL' || row.getAttribute('data-status') === st;
+        row.style.display = (textMatch && statusMatch) ? '' : 'none';
+      });
+    }
+
+    if (searchInput) searchInput.addEventListener('input', filterTable);
+    if (statusFilter) statusFilter.addEventListener('change', filterTable);
+  }
+
+  window.adminFreezeCard = async function (cardId) {
+    if (!confirm(`Are you sure you want to freeze virtual card ${cardId}? The user will be unable to make international payments until unfrozen.`)) {
+      return;
+    }
+    await apiRequest(`/admin/virtual-cards/${cardId}/freeze`, { method: 'POST' });
+    const card = MOCK_DATA.virtualCards.find(c => c.id === cardId);
+    if (card) card.status = 'FROZEN';
+    showToast(`Virtual Card ${cardId} has been FROZEN.`);
+    renderView('virtual-cards');
+  };
+
+  window.adminUnfreezeCard = async function (cardId) {
+    if (!confirm(`Unfreeze virtual card ${cardId}? This will re-enable card transactions.`)) {
+      return;
+    }
+    await apiRequest(`/admin/virtual-cards/${cardId}/unfreeze`, { method: 'POST' });
+    const card = MOCK_DATA.virtualCards.find(c => c.id === cardId);
+    if (card) card.status = 'ACTIVE';
+    showToast(`Virtual Card ${cardId} has been reactivated (ACTIVE).`);
+    renderView('virtual-cards');
+  };
 
   // ==========================================
   // Global Modal & Drawer Handlers
