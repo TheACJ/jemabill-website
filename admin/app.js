@@ -97,7 +97,13 @@
       { key: 'walletTransfers.dailyKoboTier1', group: 'Wallet Transfers', value: '5000000', source: 'DEFAULT', default: '5000000', applies: 'live', risk: 'high', description: 'Tier 1 daily cumulative limit (₦50,000)' },
       { key: 'kyc.partialNameScoreBar', group: 'KYC', value: '80', source: 'OVERRIDE', default: '70', applies: 'live', risk: 'medium', description: 'Minimum fuzzy score required for partial name match' },
       { key: 'providers.monnify.enabled', group: 'Providers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'Monnify collection provider enabled' },
-      { key: 'providers.vtpass.enabled', group: 'Providers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'VTpass bill payment adapter enabled' }
+      { key: 'providers.vtpass.enabled', group: 'Providers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'VTpass bill payment adapter enabled' },
+      { key: 'cashback.enabled', group: 'cashback', value: 'true', source: 'ENV', default: 'false', applies: 'live', risk: 'high', description: 'Master switch for earning and spending cashback' },
+      { key: 'cashback.earnRatesBps', group: 'cashback', value: 'AIRTIME:100,DATA:100,CABLE_TV:50,ELECTRICITY:50,EXAM_PIN:100,BETTING_FUNDING:50', source: 'OVERRIDE', default: '', applies: 'live', risk: 'high', description: 'Earn rate per purchase type in basis points (100 bps = 1%)' },
+      { key: 'cashback.spendTypes', group: 'cashback', value: 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING', source: 'DEFAULT', default: 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING', applies: 'live', risk: 'high', description: 'Purchase types a user may pay for with cashback' },
+      { key: 'cashback.maxEarnPerTxKobo', group: 'cashback', value: '50000', source: 'DEFAULT', default: '50000', applies: 'live', risk: 'high', description: 'Most cashback one purchase can earn (₦500)' },
+      { key: 'cashback.maxEarnPerUserPerMonthKobo', group: 'cashback', value: '500000', source: 'DEFAULT', default: '500000', applies: 'live', risk: 'high', description: 'Most cashback one user can earn per month (₦5,000)' },
+      { key: 'cashback.platformDailyBudgetKobo', group: 'cashback', value: '100000000', source: 'DEFAULT', default: '100000000', applies: 'live', risk: 'high', description: 'Platform daily budget ceiling (₦1,000,000)' }
     ],
     auditLogs: [
       { id: 'aud_1', actor: 'admin@jemabill.com', action: 'KYC_APPROVE', entity: 'KycRecord:kyc_9901', timestamp: '2026-11-13T21:40:00Z', reason: 'Selfie biometric similarity verified at 94%' },
@@ -348,6 +354,9 @@
         break;
       case 'funding':
         await renderFunding(container);
+        break;
+      case 'cashback':
+        await renderCashback(container);
         break;
       case 'providers':
         await renderProviders(container);
@@ -987,6 +996,304 @@
   window.recheckDeposit = async function (depId) {
     await apiRequest(`/admin/funding/deposits/${depId}/recheck`, { method: 'POST' });
     showToast(`Recheck triggered for deposit ${depId}`);
+  };
+
+  // 5b. Cashback Rates & Rules Manager
+  const CASHBACK_SERVICES = [
+    { type: 'AIRTIME', name: 'Airtime Top-up', icon: 'phone_android', defaultBps: 100 },
+    { type: 'DATA', name: 'Data Bundles', icon: 'wifi', defaultBps: 100 },
+    { type: 'CABLE_TV', name: 'Cable TV Subscriptions', icon: 'tv', defaultBps: 50 },
+    { type: 'ELECTRICITY', name: 'Electricity Bills', icon: 'bolt', defaultBps: 50 },
+    { type: 'EXAM_PIN', name: 'Examination PINs (WAEC/NECO/NABTEB/JAMB)', icon: 'school', defaultBps: 100 },
+    { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 }
+  ];
+
+  async function renderCashback(container) {
+    const res = await apiRequest('/admin/settings');
+    const settings = res.data || MOCK_DATA.settings;
+
+    const getVal = (key, fallback = '') => {
+      const found = settings.find(s => s.key === key);
+      return found ? String(found.value) : fallback;
+    };
+
+    const isEnabled = getVal('cashback.enabled', 'true') === 'true';
+    const earnRatesRaw = getVal('cashback.earnRatesBps', 'AIRTIME:100,DATA:100,CABLE_TV:50,ELECTRICITY:50,EXAM_PIN:100,BETTING_FUNDING:50');
+    const spendTypesRaw = getVal('cashback.spendTypes', 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING');
+    const maxEarnTxKobo = parseInt(getVal('cashback.maxEarnPerTxKobo', '50000'), 10) || 50000;
+    const maxEarnMonthKobo = parseInt(getVal('cashback.maxEarnPerUserPerMonthKobo', '500000'), 10) || 500000;
+    const dailyBudgetKeyKobo = parseInt(getVal('cashback.platformDailyBudgetKobo', '100000000'), 10) || 100000000;
+
+    // Parse existing rates
+    const earnRateMap = {};
+    earnRatesRaw.split(',').forEach(item => {
+      const parts = item.trim().split(':');
+      if (parts.length === 2) {
+        earnRateMap[parts[0].toUpperCase()] = parseInt(parts[1], 10) || 0;
+      }
+    });
+
+    // Parse spend types
+    const spendSet = new Set(spendTypesRaw.split(',').map(s => s.trim().toUpperCase()));
+
+    container.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
+        <div class="kpi-card">
+          <span class="kpi-label">Master Cashback Switch</span>
+          <div class="kpi-val" style="color:${isEnabled ? 'var(--accent-lime)' : 'var(--danger)'};">
+            ${isEnabled ? 'ACTIVE' : 'DISABLED'}
+          </div>
+          <div class="kpi-sub">Controls platform-wide earning & spending</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Active Earning Services</span>
+          <div class="kpi-val">${Object.keys(earnRateMap).filter(k => earnRateMap[k] > 0).length} / ${CASHBACK_SERVICES.length}</div>
+          <div class="kpi-sub">Services earning cashback on debit</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Active Spend Services</span>
+          <div class="kpi-val">${spendSet.size} / ${CASHBACK_SERVICES.length}</div>
+          <div class="kpi-sub">Services accepting cashback payment</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Platform Daily Budget</span>
+          <div class="kpi-val" style="color:var(--accent-lime);">₦${(dailyBudgetKeyKobo / 100).toLocaleString('en-NG')}</div>
+          <div class="kpi-sub">Global ceiling for all user rewards</div>
+        </div>
+      </div>
+
+      <!-- Service-by-Service Rates Card -->
+      <div class="table-card" style="margin-bottom: 24px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:#FFFFFF;">Service Cashback Rates & Spend Rules</h3>
+            <p style="font-size:0.8rem; color:var(--text-dim); margin-top:2px;">
+              Configure basis points per service (100 bps = 1.00%) and toggle which services allow redemption.
+            </p>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <label style="font-size:0.85rem; color:var(--text-muted); cursor:pointer;">
+              <input type="checkbox" id="cb-master-switch" ${isEnabled ? 'checked' : ''} style="margin-right:6px;" />
+              Enable Cashback System
+            </label>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Service Category</th>
+              <th>Service Code</th>
+              <th>Earning Status</th>
+              <th>Earn Rate (%)</th>
+              <th>Basis Points (BPS)</th>
+              <th>Allow Spend (Redeem)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${CASHBACK_SERVICES.map(svc => {
+              const currentBps = earnRateMap[svc.type] !== undefined ? earnRateMap[svc.type] : svc.defaultBps;
+              const isEarning = currentBps > 0;
+              const isSpending = spendSet.has(svc.type);
+              const currentPct = (currentBps / 100).toFixed(2);
+
+              return `
+                <tr>
+                  <td>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <span class="material-symbols-outlined" style="color:var(--primary); font-size:1.3rem;">${svc.icon}</span>
+                      <strong>${svc.name}</strong>
+                    </div>
+                  </td>
+                  <td><code>${svc.type}</code></td>
+                  <td>
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                      <input type="checkbox" id="cb-earn-active-${svc.type}" ${isEarning ? 'checked' : ''} onchange="window.toggleServiceEarn('${svc.type}', this.checked)" />
+                      <span id="cb-earn-badge-${svc.type}" class="badge ${isEarning ? 'badge-info' : 'badge-neutral'}">
+                        ${isEarning ? 'Earning' : 'Off'}
+                      </span>
+                    </label>
+                  </td>
+                  <td>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="20"
+                        id="cb-rate-pct-${svc.type}"
+                        value="${currentPct}"
+                        style="width:80px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px 8px; color:#FFFFFF; font-weight:600; text-align:right;"
+                        oninput="window.updateRateBpsFromPct('${svc.type}', this.value)"
+                      />
+                      <span style="font-size:0.85rem; color:var(--text-dim);">%</span>
+                    </div>
+                  </td>
+                  <td>
+                    <span id="cb-rate-bps-${svc.type}" style="font-family:monospace; font-weight:600; color:var(--accent-lime);">
+                      ${currentBps} bps
+                    </span>
+                  </td>
+                  <td>
+                    <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
+                      <input type="checkbox" id="cb-spend-active-${svc.type}" ${isSpending ? 'checked' : ''} />
+                      <span class="badge ${isSpending ? 'badge-info' : 'badge-neutral'}">
+                        ${isSpending ? 'Redeemable' : 'Disabled'}
+                      </span>
+                    </label>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Financial Guardrails & Caps Card -->
+      <div class="table-card" style="margin-bottom: 24px;">
+        <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:#FFFFFF; margin-bottom: 4px;">Financial Guardrails & Risk Caps</h3>
+        <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom: 18px;">
+          Mandatory safety ceilings preventing unbounded liabilities or fraud exploits.
+        </p>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+          <div class="form-field">
+            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Max Earn Per Transaction (₦)</label>
+            <input
+              type="number"
+              id="cb-cap-tx"
+              value="${maxEarnTxKobo / 100}"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+            />
+            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Ceiling on cashback reward for one purchase</span>
+          </div>
+
+          <div class="form-field">
+            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Max Earn Per User / Month (₦)</label>
+            <input
+              type="number"
+              id="cb-cap-month"
+              value="${maxEarnMonthKobo / 100}"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+            />
+            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Monthly user ceiling (calendar month in Lagos)</span>
+          </div>
+
+          <div class="form-field">
+            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Platform Daily Budget (₦)</label>
+            <input
+              type="number"
+              id="cb-cap-budget"
+              value="${dailyBudgetKeyKobo / 100}"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+            />
+            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Platform-wide daily reward budget</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Footer -->
+      <div style="display:flex; justify-content:flex-end; gap:12px;">
+        <button class="btn-primary" style="padding:12px 28px; font-size:0.95rem;" onclick="window.saveCashbackManagerConfig()">
+          <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle; margin-right:4px;">save</span>
+          Save Cashback Rules & Rates
+        </button>
+      </div>
+    `;
+  }
+
+  window.toggleServiceEarn = function (type, active) {
+    const inputPct = document.getElementById(`cb-rate-pct-${type}`);
+    const badge = document.getElementById(`cb-earn-badge-${type}`);
+    if (active) {
+      if (!inputPct.value || parseFloat(inputPct.value) <= 0) {
+        inputPct.value = '1.00';
+      }
+      window.updateRateBpsFromPct(type, inputPct.value);
+      if (badge) {
+        badge.className = 'badge badge-info';
+        badge.textContent = 'Earning';
+      }
+    } else {
+      inputPct.value = '0.00';
+      window.updateRateBpsFromPct(type, '0.00');
+      if (badge) {
+        badge.className = 'badge badge-neutral';
+        badge.textContent = 'Off';
+      }
+    }
+  };
+
+  window.updateRateBpsFromPct = function (type, pctVal) {
+    const pct = parseFloat(pctVal) || 0;
+    const bps = Math.round(pct * 100);
+    const bpsSpan = document.getElementById(`cb-rate-bps-${type}`);
+    if (bpsSpan) {
+      bpsSpan.textContent = `${bps} bps`;
+    }
+  };
+
+  window.saveCashbackManagerConfig = async function () {
+    const enabled = document.getElementById('cb-master-switch')?.checked ?? true;
+    
+    // Collect earn rates
+    const earnItems = [];
+    CASHBACK_SERVICES.forEach(svc => {
+      const active = document.getElementById(`cb-earn-active-${svc.type}`)?.checked;
+      const pct = parseFloat(document.getElementById(`cb-rate-pct-${svc.type}`)?.value) || 0;
+      const bps = Math.round(pct * 100);
+      if (active && bps > 0) {
+        earnItems.push(`${svc.type}:${bps}`);
+      }
+    });
+    const earnRatesBps = earnItems.join(',');
+
+    // Collect spend types
+    const spendItems = [];
+    CASHBACK_SERVICES.forEach(svc => {
+      if (document.getElementById(`cb-spend-active-${svc.type}`)?.checked) {
+        spendItems.push(svc.type);
+      }
+    });
+    const spendTypes = spendItems.length > 0 ? spendItems.join(',') : 'AIRTIME,DATA';
+
+    // Collect caps in kobo
+    const maxTxNaira = parseFloat(document.getElementById('cb-cap-tx')?.value) || 500;
+    const maxMonthNaira = parseFloat(document.getElementById('cb-cap-month')?.value) || 5000;
+    const budgetDailyNaira = parseFloat(document.getElementById('cb-cap-budget')?.value) || 1000000;
+
+    const maxEarnPerTxKobo = Math.round(maxTxNaira * 100);
+    const maxEarnPerUserPerMonthKobo = Math.round(maxMonthNaira * 100);
+    const platformDailyBudgetKobo = Math.round(budgetDailyNaira * 100);
+
+    const reason = prompt('Please enter an operational reason for this cashback update (min 10 characters):', 'Updated service cashback earn rates and spend policies');
+    if (!reason || reason.trim().length < 10) {
+      alert('Updating financial settings requires an operational audit reason of at least 10 characters.');
+      return;
+    }
+
+    const updates = [
+      { key: 'cashback.enabled', value: String(enabled) },
+      { key: 'cashback.earnRatesBps', value: earnRatesBps },
+      { key: 'cashback.spendTypes', value: spendTypes },
+      { key: 'cashback.maxEarnPerTxKobo', value: String(maxEarnPerTxKobo) },
+      { key: 'cashback.maxEarnPerUserPerMonthKobo', value: String(maxEarnPerUserPerMonthKobo) },
+      { key: 'cashback.platformDailyBudgetKobo', value: String(platformDailyBudgetKobo) },
+    ];
+
+    for (const u of updates) {
+      await apiRequest(`/admin/settings/${u.key}`, {
+        method: 'PUT',
+        body: JSON.stringify({ value: u.value, reason: reason.trim(), confirm: true })
+      });
+
+      // Also update local mock data if in mock mode
+      const local = MOCK_DATA.settings.find(s => s.key === u.key);
+      if (local) local.value = u.value;
+    }
+
+    showToast('Cashback rules and rates saved successfully!');
+    renderView('cashback');
   };
 
   // 6. Provider Health Screen
