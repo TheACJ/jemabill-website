@@ -1008,9 +1008,20 @@
     { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 }
   ];
 
+  function normalizeSettingsData(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.groups)) {
+      return data.groups.flatMap(g => g.settings || []);
+    }
+    if (data && Array.isArray(data.settings)) {
+      return data.settings;
+    }
+    return MOCK_DATA.settings;
+  }
+
   async function renderCashback(container) {
     const res = await apiRequest('/admin/settings');
-    const settings = res.data || MOCK_DATA.settings;
+    const settings = normalizeSettingsData(res.data);
 
     const getVal = (key, fallback = '') => {
       const found = settings.find(s => s.key === key);
@@ -1273,12 +1284,12 @@
     }
 
     const updates = [
-      { key: 'cashback.enabled', value: String(enabled) },
-      { key: 'cashback.earnRatesBps', value: earnRatesBps },
-      { key: 'cashback.spendTypes', value: spendTypes },
-      { key: 'cashback.maxEarnPerTxKobo', value: String(maxEarnPerTxKobo) },
-      { key: 'cashback.maxEarnPerUserPerMonthKobo', value: String(maxEarnPerUserPerMonthKobo) },
-      { key: 'cashback.platformDailyBudgetKobo', value: String(platformDailyBudgetKobo) },
+      { key: 'cashback.enabled', value: Boolean(enabled) },
+      { key: 'cashback.earnRatesBps', value: earnItems },
+      { key: 'cashback.spendTypes', value: spendItems.length > 0 ? spendItems : ['AIRTIME', 'DATA'] },
+      { key: 'cashback.maxEarnPerTxKobo', value: maxEarnPerTxKobo },
+      { key: 'cashback.maxEarnPerUserPerMonthKobo', value: maxEarnPerUserPerMonthKobo },
+      { key: 'cashback.platformDailyBudgetKobo', value: platformDailyBudgetKobo },
     ];
 
     for (const u of updates) {
@@ -1343,7 +1354,7 @@
   // 7. Settings Registry Screen
   async function renderSettings(container) {
     const res = await apiRequest('/admin/settings');
-    const settings = res.data || MOCK_DATA.settings;
+    const settings = normalizeSettingsData(res.data);
 
     container.innerHTML = `
       <div class="table-card">
