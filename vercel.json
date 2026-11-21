@@ -1,5 +1,11 @@
 {
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/:match*",
+      "destination": "https://api.jemabill.com/:match*"
+    }
+  ],
   "headers": [
     {
       "source": "/admin(.*)",

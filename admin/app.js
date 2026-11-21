@@ -10,7 +10,7 @@
   // Config & State
   const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : 'https://api.jemabill.com';
+    : '/api';
 
   const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
   let adminToken = null;
