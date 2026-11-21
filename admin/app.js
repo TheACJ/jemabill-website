@@ -1002,10 +1002,18 @@
   const CASHBACK_SERVICES = [
     { type: 'AIRTIME', name: 'Airtime Top-up', icon: 'phone_android', defaultBps: 100 },
     { type: 'DATA', name: 'Data Bundles', icon: 'wifi', defaultBps: 100 },
-    { type: 'CABLE_TV', name: 'Cable TV Subscriptions', icon: 'tv', defaultBps: 50 },
     { type: 'ELECTRICITY', name: 'Electricity Bills', icon: 'bolt', defaultBps: 50 },
-    { type: 'EXAM_PIN', name: 'Examination PINs (WAEC/NECO/NABTEB/JAMB)', icon: 'school', defaultBps: 100 },
-    { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 }
+    { type: 'CABLE_TV', name: 'Cable TV Subscriptions', icon: 'tv', defaultBps: 50 },
+    { type: 'EXAM_PIN', name: 'Examination PINs (WAEC/NECO/NABTEB)', icon: 'school', defaultBps: 100 },
+    { type: 'JAMB', name: 'JAMB UTME / DE PIN', icon: 'local_library', defaultBps: 100 },
+    { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 },
+    { type: 'TELECOM_SMILE', name: 'Smile Internet', icon: 'language', defaultBps: 50 },
+    { type: 'TELECOM_SPECTRANET', name: 'Spectranet Internet', icon: 'router', defaultBps: 50 },
+    { type: 'EDUCATION_DATA', name: 'Education / School Fees', icon: 'menu_book', defaultBps: 50 },
+    { type: 'BULK_SMS', name: 'Bulk SMS', icon: 'sms', defaultBps: 50 },
+    { type: 'RECHARGE_CARD_PRINT', name: 'Airtime Printing', icon: 'print', defaultBps: 50 },
+    { type: 'VEHICLE_INSURANCE', name: 'Vehicle Insurance', icon: 'directions_car', defaultBps: 50 },
+    { type: 'COUPON', name: 'Coupons / Gift Cards', icon: 'redeem', defaultBps: 50 },
   ];
 
   function normalizeSettingsData(data) {
@@ -1029,8 +1037,8 @@
     };
 
     const isEnabled = getVal('cashback.enabled', 'true') === 'true';
-    const earnRatesRaw = getVal('cashback.earnRatesBps', 'AIRTIME:100,DATA:100,CABLE_TV:50,ELECTRICITY:50,EXAM_PIN:100,BETTING_FUNDING:50');
-    const spendTypesRaw = getVal('cashback.spendTypes', 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING');
+    const earnRatesRaw = getVal('cashback.earnRatesBps', 'AIRTIME:100,DATA:100,ELECTRICITY:50,CABLE_TV:50,EXAM_PIN:100,JAMB:100,BETTING_FUNDING:50,TELECOM_SMILE:50,TELECOM_SPECTRANET:50,EDUCATION_DATA:50,BULK_SMS:50,RECHARGE_CARD_PRINT:50,VEHICLE_INSURANCE:50,COUPON:50');
+    const spendTypesRaw = getVal('cashback.spendTypes', 'AIRTIME,DATA,ELECTRICITY,CABLE_TV,EXAM_PIN,JAMB,BETTING_FUNDING,TELECOM_SMILE,TELECOM_SPECTRANET,EDUCATION_DATA,BULK_SMS,RECHARGE_CARD_PRINT,VEHICLE_INSURANCE,COUPON');
     const maxEarnTxKobo = parseInt(getVal('cashback.maxEarnPerTxKobo', '50000'), 10) || 50000;
     const maxEarnMonthKobo = parseInt(getVal('cashback.maxEarnPerUserPerMonthKobo', '500000'), 10) || 500000;
     const dailyBudgetKeyKobo = parseInt(getVal('cashback.platformDailyBudgetKobo', '100000000'), 10) || 100000000;
