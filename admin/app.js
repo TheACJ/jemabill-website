@@ -1,7 +1,7 @@
 /**
  * JEMABILL ADMIN BACK OFFICE — APPLICATION CONTROLLER
- * Compliant with backend/docs/ADMIN_PLAN_2026-11-09.md
- * Memory-only token, 30m idle session, strict security guards.
+ * Production Version: Connected to live https://api.jemabill.com
+ * Memory-only token, 30m idle session, zero mock datasets.
  */
 
 (function () {
@@ -17,6 +17,7 @@
   let currentAdmin = null;
   let idleTimer = null;
   let activeTab = 'overview';
+  let cachedSettings = [];
 
   // DOM Elements
   const authView = document.getElementById('auth-view');
@@ -38,116 +39,37 @@
   const modalBody = document.getElementById('modal-body');
   const modalFooter = document.getElementById('modal-footer');
 
-  // ==========================================
-  // Mock Dataset Fallback (for instant test & offline preview)
-  // ==========================================
-  const MOCK_DATA = {
-    overview: {
-      users: { total: 14820, new24h: 84, new7d: 592, tier0: 8940, tier1: 4360, tier2: 1520 },
-      kyc: { queueSize: 14, oldestAgeHours: 3.5 },
-      transactions24h: { success: 3820, pending: 12, failed: 8, needsReview: 4 },
-      parkedPayouts: 2,
-      depositsToday: {
-        totalGrossKobo: 482500000,
-        absorbedFeesKobo: 2412500,
-        byProvider: [
-          { provider: 'Monnify', grossKobo: 320000000, feeKobo: 1600000 },
-          { provider: 'PaymentPoint', grossKobo: 162500000, feeKobo: 812500 }
-        ]
-      },
-      failedWebhooks24h: 3
-    },
-    users: [
-      { id: 'usr_8921a', name: 'Chinedu Okafor', email: 'chinedu.o***@gmail.com', phone: '0803***8912', kycTier: 2, walletBalanceNaira: 145000.00, isFrozen: false, pinLocked: false, createdAt: '2026-09-12T14:20:00Z' },
-      { id: 'usr_3490b', name: 'Amina Bello', email: 'amina.b***@yahoo.com', phone: '0812***4421', kycTier: 1, walletBalanceNaira: 32450.50, isFrozen: false, pinLocked: false, createdAt: '2026-10-04T09:15:00Z' },
-      { id: 'usr_1192c', name: 'Tunde Adebayo', email: 'tunde.a***@outlook.com', phone: '0901***9941', kycTier: 0, walletBalanceNaira: 2100.00, isFrozen: true, pinLocked: true, createdAt: '2026-10-28T18:40:00Z' },
-      { id: 'usr_7734d', name: 'Ngozi Eze', email: 'ngozi.e***@gmail.com', phone: '0703***1123', kycTier: 2, walletBalanceNaira: 88920.00, isFrozen: false, pinLocked: false, createdAt: '2026-11-01T11:05:00Z' },
-      { id: 'usr_5561e', name: 'Emeka Nwosu', email: 'emeka.n***@gmail.com', phone: '0806***7712', kycTier: 1, walletBalanceNaira: 5400.00, isFrozen: false, pinLocked: false, createdAt: '2026-11-08T16:22:00Z' }
-    ],
-    kycQueue: [
-      { id: 'kyc_9901', userId: 'usr_8921a', userName: 'Chinedu Okafor', idType: 'NIN', idLast4: '4821', matchScore: 94, status: 'PENDING', submittedAt: '2026-11-13T18:45:00Z', selfieCount: 4 },
-      { id: 'kyc_9902', userId: 'usr_7734d', userName: 'Ngozi Eze', idType: 'BVN', idLast4: '9904', matchScore: 88, status: 'NEEDS_REVIEW', submittedAt: '2026-11-13T19:10:00Z', selfieCount: 4 },
-      { id: 'kyc_9903', userId: 'usr_3490b', userName: 'Amina Bello', idType: 'NIN', idLast4: '1288', matchScore: 98, status: 'PENDING', submittedAt: '2026-11-13T20:05:00Z', selfieCount: 4 }
-    ],
-    transactions: [
-      { id: 'tx_w2w_9821', type: 'WALLET_TRANSFER', amountNaira: 25000.00, feeNaira: 0.00, direction: 'DEBIT', status: 'SUCCESS', needsReview: false, user: 'Chinedu O.', counterparty: 'Amina B.', date: '2026-11-13T21:12:00Z' },
-      { id: 'tx_payout_882', type: 'BANK_TRANSFER', amountNaira: 50000.00, feeNaira: 150.00, direction: 'DEBIT', status: 'PENDING', needsReview: true, user: 'Emeka N.', counterparty: 'GTBank (014***921)', date: '2026-11-13T20:55:00Z' },
-      { id: 'tx_disco_4412', type: 'ELECTRICITY', amountNaira: 10000.00, feeNaira: 0.00, direction: 'DEBIT', status: 'SUCCESS', needsReview: false, user: 'Ngozi E.', counterparty: 'IKEDC Prepaid', date: '2026-11-13T20:30:00Z' },
-      { id: 'tx_data_1109', type: 'DATA', amountNaira: 3500.00, feeNaira: 0.00, direction: 'DEBIT', status: 'SUCCESS', needsReview: false, user: 'Amina B.', counterparty: 'MTN 10GB Monthly', date: '2026-11-13T19:50:00Z' },
-      { id: 'tx_fund_9918', type: 'DEPOSIT', amountNaira: 100000.00, feeNaira: 0.00, direction: 'CREDIT', status: 'SUCCESS', needsReview: false, user: 'Chinedu O.', counterparty: 'Monnify Dedicated Virtual Account', date: '2026-11-13T19:15:00Z' }
-    ],
-    fundingDeposits: [
-      { id: 'dep_01', provider: 'Monnify', grossNaira: 100000.00, netNaira: 100000.00, providerFeeNaira: 500.00, absorbed: true, status: 'SUCCESS', reference: 'MNFY_DEP_9912', user: 'Chinedu O.', date: '2026-11-13T21:05:00Z' },
-      { id: 'dep_02', provider: 'PaymentPoint', grossNaira: 50000.00, netNaira: 50000.00, providerFeeNaira: 250.00, absorbed: true, status: 'SUCCESS', reference: 'PPT_DEP_4419', user: 'Amina B.', date: '2026-11-13T20:18:00Z' },
-      { id: 'dep_03', provider: 'Monnify', grossNaira: 20000.00, netNaira: 20000.00, providerFeeNaira: 100.00, absorbed: true, status: 'NEEDS_REVIEW', reference: 'MNFY_DEP_1102', user: 'Tunde A.', date: '2026-11-13T18:40:00Z' }
-    ],
-    providers: [
-      { name: 'Monnify', type: 'Virtual Accounts & Collections', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '1m ago', cachedBalance: '₦1,420,500.00' },
-      { name: 'PaymentPoint', type: 'Backup Virtual Accounts', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '4m ago', cachedBalance: '₦840,200.00' },
-      { name: 'StroWallet', type: 'Virtual Cards & Float', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '12m ago', cachedBalance: '$4,280.00' },
-      { name: 'VTpass', type: 'Utilities & Bill Payments', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '2m ago', cachedBalance: '₦680,450.00' },
-      { name: 'NaijaResultPins', type: 'WAEC / JAMB / NECO PINs', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '18m ago', cachedBalance: '₦210,000.00' },
-      { name: 'HollaTags', type: 'SMS & OTP Delivery', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '30s ago', cachedBalance: '14,250 units' },
-      { name: 'SMTP (Infobip)', type: 'Transactional Email', status: 'OPERATIONAL', mode: 'LIVE', lastSuccess: '45s ago', cachedBalance: 'Active' }
-    ],
-    settings: [
-      { key: 'walletTransfers.enabled', group: 'Wallet Transfers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'Master toggle for user-to-user instant transfers' },
-      { key: 'walletTransfers.feeKobo', group: 'Wallet Transfers', value: '0', source: 'DEFAULT', default: '0', applies: 'live', risk: 'high', description: 'Sender fee in kobo for P2P transfers' },
-      { key: 'walletTransfers.maxKoboTier1', group: 'Wallet Transfers', value: '2000000', source: 'DEFAULT', default: '2000000', applies: 'live', risk: 'high', description: 'Tier 1 single transfer limit (₦20,000)' },
-      { key: 'walletTransfers.dailyKoboTier1', group: 'Wallet Transfers', value: '5000000', source: 'DEFAULT', default: '5000000', applies: 'live', risk: 'high', description: 'Tier 1 daily cumulative limit (₦50,000)' },
-      { key: 'kyc.partialNameScoreBar', group: 'KYC', value: '80', source: 'OVERRIDE', default: '70', applies: 'live', risk: 'medium', description: 'Minimum fuzzy score required for partial name match' },
-      { key: 'providers.monnify.enabled', group: 'Providers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'Monnify collection provider enabled' },
-      { key: 'providers.vtpass.enabled', group: 'Providers', value: 'true', source: 'ENV', default: 'true', applies: 'live', risk: 'high', description: 'VTpass bill payment adapter enabled' },
-      { key: 'cashback.enabled', group: 'cashback', value: 'true', source: 'ENV', default: 'false', applies: 'live', risk: 'high', description: 'Master switch for earning and spending cashback' },
-      { key: 'cashback.earnRatesBps', group: 'cashback', value: 'AIRTIME:100,DATA:100,CABLE_TV:50,ELECTRICITY:50,EXAM_PIN:100,BETTING_FUNDING:50', source: 'OVERRIDE', default: '', applies: 'live', risk: 'high', description: 'Earn rate per purchase type in basis points (100 bps = 1%)' },
-      { key: 'cashback.spendTypes', group: 'cashback', value: 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING', source: 'DEFAULT', default: 'AIRTIME,DATA,CABLE_TV,ELECTRICITY,EXAM_PIN,BETTING_FUNDING', applies: 'live', risk: 'high', description: 'Purchase types a user may pay for with cashback' },
-      { key: 'cashback.maxEarnPerTxKobo', group: 'cashback', value: '50000', source: 'DEFAULT', default: '50000', applies: 'live', risk: 'high', description: 'Most cashback one purchase can earn (₦500)' },
-      { key: 'cashback.maxEarnPerUserPerMonthKobo', group: 'cashback', value: '500000', source: 'DEFAULT', default: '500000', applies: 'live', risk: 'high', description: 'Most cashback one user can earn per month (₦5,000)' },
-      { key: 'cashback.platformDailyBudgetKobo', group: 'cashback', value: '100000000', source: 'DEFAULT', default: '100000000', applies: 'live', risk: 'high', description: 'Platform daily budget ceiling (₦1,000,000)' }
-    ],
-    auditLogs: [
-      { id: 'aud_1', actor: 'admin@jemabill.com', action: 'KYC_APPROVE', entity: 'KycRecord:kyc_9901', timestamp: '2026-11-13T21:40:00Z', reason: 'Selfie biometric similarity verified at 94%' },
-      { id: 'aud_2', actor: 'admin@jemabill.com', action: 'SETTINGS_UPDATE', entity: 'Setting:kyc.partialNameScoreBar', timestamp: '2026-11-13T19:25:00Z', reason: 'Tightened threshold for improved fraud detection' },
-      { id: 'aud_3', actor: 'system_monitor', action: 'PROVIDER_BALANCE_CHECK', entity: 'Provider:VTpass', timestamp: '2026-11-13T18:00:00Z', reason: 'Hourly automated float check' }
-    ],
-    virtualCards: [
-      { id: 'vc_89123', userId: 'usr_01', userName: 'Chinedu Okafor', last4: '8201', brand: 'Mastercard (USD)', status: 'ACTIVE', balanceKobo: 437750, balanceUsd: 5.00, createdAt: '2026-11-14 14:20' },
-      { id: 'vc_89124', userId: 'usr_02', userName: 'Amina Bello', last4: '3351', brand: 'Mastercard (USD)', status: 'ACTIVE', balanceKobo: 875500, balanceUsd: 10.00, createdAt: '2026-11-14 16:45' },
-      { id: 'vc_89125', userId: 'usr_03', userName: 'Tunde Bakare', last4: '9012', brand: 'Mastercard (USD)', status: 'FROZEN', balanceKobo: 120000, balanceUsd: 1.37, createdAt: '2026-11-13 11:10' }
-    ]
+  // Provider Metadata
+  const PROVIDER_METADATA = {
+    monnify: { name: 'Monnify', type: 'Virtual Accounts & Collections', icon: 'account_balance' },
+    paymentpoint: { name: 'PaymentPoint', type: 'Primary & Backup Virtual Accounts', icon: 'hub' },
+    strowallet: { name: 'StroWallet', type: 'Bank Transfers, Cards & Float', icon: 'credit_card' },
+    vtpass: { name: 'VTpass', type: 'Utilities & Bill Payments', icon: 'bolt' },
+    naijaresultpins: { name: 'NaijaResultPins', type: 'WAEC / JAMB / NECO PINs', icon: 'school' },
+    hollatags: { name: 'HollaTags', type: 'SMS & OTP Delivery', icon: 'sms' },
+    smtp: { name: 'SMTP (Infobip)', type: 'Transactional Email', icon: 'mail' },
   };
 
-  // ==========================================
-  // Session & Inactivity Watchdog (30m idle)
-  // ==========================================
-  function resetIdleTimer() {
-    clearTimeout(idleTimer);
-    if (!adminToken) return;
-
-    let timeLeftSeconds = IDLE_TIMEOUT_MS / 1000;
-    updateSessionCountdown(timeLeftSeconds);
-
-    idleTimer = setTimeout(() => {
-      logout('Admin session expired due to 30 minutes of inactivity.');
-    }, IDLE_TIMEOUT_MS);
-  }
-
-  function updateSessionCountdown(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    if (sessionCountdown) {
-      sessionCountdown.textContent = `${mins}m ${secs < 10 ? '0' : ''}${secs}s session`;
-    }
-  }
-
-  ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach((event) => {
-    window.addEventListener(event, () => {
-      if (adminToken) resetIdleTimer();
-    }, { passive: true });
-  });
+  // 14 Cashback Services
+  const CASHBACK_SERVICES = [
+    { type: 'AIRTIME', name: 'Airtime Top-up', icon: 'phone_android', defaultBps: 100 },
+    { type: 'DATA', name: 'Data Bundles', icon: 'wifi', defaultBps: 100 },
+    { type: 'ELECTRICITY', name: 'Electricity DisCo', icon: 'bolt', defaultBps: 50 },
+    { type: 'CABLE_TV', name: 'Cable TV Renewal', icon: 'tv', defaultBps: 50 },
+    { type: 'EXAM_PIN', name: 'Exam PINs (WAEC/NECO/NABTEB)', icon: 'school', defaultBps: 100 },
+    { type: 'JAMB', name: 'JAMB UTME / DE PINs', icon: 'menu_book', defaultBps: 100 },
+    { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 },
+    { type: 'TELECOM_SMILE', name: 'Smile Internet', icon: 'router', defaultBps: 50 },
+    { type: 'TELECOM_SPECTRANET', name: 'Spectranet 4G', icon: 'cell_tower', defaultBps: 50 },
+    { type: 'EDUCATION_DATA', name: 'Education Data', icon: 'local_library', defaultBps: 50 },
+    { type: 'BULK_SMS', name: 'Bulk SMS Messaging', icon: 'sms', defaultBps: 50 },
+    { type: 'RECHARGE_CARD_PRINT', name: 'Recharge Card Printing', icon: 'print', defaultBps: 50 },
+    { type: 'VEHICLE_INSURANCE', name: 'Vehicle Insurance', icon: 'directions_car', defaultBps: 50 },
+    { type: 'COUPON', name: 'Coupon Generation', icon: 'confirmation_number', defaultBps: 50 }
+  ];
 
   // ==========================================
-  // Safe API Client with 401/403 Guards
+  // Production API Client with 401/403 Guards
   // ==========================================
   async function apiRequest(endpoint, options = {}) {
     if (!adminToken) {
@@ -174,25 +96,15 @@
       }
 
       const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const errorMsg = json.message || (json.error && json.error.message) || json.error || `HTTP ${res.status}`;
+        return { success: false, error: errorMsg };
+      }
       return json;
     } catch (err) {
-      // In local dev or demo mode, fallback to mock data
-      console.warn(`[AdminAPI] ${endpoint} fetch error; serving local dashboard view.`);
-      return getMockResponse(endpoint, options);
+      console.error(`[AdminAPI] ${endpoint} fetch error:`, err);
+      return { success: false, error: 'Network error connecting to backend API.' };
     }
-  }
-
-  function getMockResponse(endpoint, options = {}) {
-    if (endpoint === '/admin/overview') return { success: true, data: MOCK_DATA.overview };
-    if (endpoint.startsWith('/admin/users')) return { success: true, data: MOCK_DATA.users };
-    if (endpoint.startsWith('/admin/kyc')) return { success: true, data: MOCK_DATA.kycQueue };
-    if (endpoint.startsWith('/admin/transactions')) return { success: true, data: MOCK_DATA.transactions };
-    if (endpoint.startsWith('/admin/funding')) return { success: true, data: MOCK_DATA.fundingDeposits };
-    if (endpoint.startsWith('/admin/providers/health')) return { success: true, data: MOCK_DATA.providers };
-    if (endpoint.startsWith('/admin/settings')) return { success: true, data: MOCK_DATA.settings };
-    if (endpoint.startsWith('/admin/audit-log')) return { success: true, data: MOCK_DATA.auditLogs };
-    if (endpoint.startsWith('/admin/virtual-cards')) return { success: true, data: MOCK_DATA.virtualCards };
-    return { success: true, data: {} };
   }
 
   // ==========================================
@@ -255,25 +167,10 @@
         return;
       }
 
-      // Check fallback test login for testing environment
-      if (email.includes('admin') || email.includes('jemabill')) {
-        adminToken = 'mock-admin-token-' + Date.now();
-        currentAdmin = { email, role: 'ADMIN', name: 'Operations Admin' };
-        initSession();
-        return;
-      }
-
       const msg = body.message || (body.error && body.error.message) || body.error || 'Invalid administrator credentials.';
       showLoginAlert(Array.isArray(msg) ? msg[0] : msg);
     } catch {
-      // In offline / preview test
-      if (email.includes('admin') || email.includes('jemabill')) {
-        adminToken = 'mock-admin-token-' + Date.now();
-        currentAdmin = { email, role: 'ADMIN', name: 'Operations Admin' };
-        initSession();
-      } else {
-        showLoginAlert('Network error connecting to backend API.');
-      }
+      showLoginAlert('Network error connecting to backend API.');
     } finally {
       loginBtn.disabled = false;
       loginBtn.querySelector('span:last-child').textContent = 'Sign In to Panel';
@@ -285,19 +182,44 @@
     loginAlert.style.display = 'block';
   }
 
+  // ==========================================
+  // Session Lifetime & Idle Timeout
+  // ==========================================
   function initSession() {
     authView.style.display = 'none';
     appLayout.style.display = 'flex';
 
-    if (adminNameDisplay) adminNameDisplay.textContent = currentAdmin.name || currentAdmin.email;
-    if (adminInitialsDisplay) {
-      const parts = (currentAdmin.name || currentAdmin.email).split(/[\s.@]/);
-      adminInitialsDisplay.textContent = (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
-    }
+    adminNameDisplay.textContent = currentAdmin.name || currentAdmin.email;
+    adminInitialsDisplay.textContent = (currentAdmin.name || 'AD')
+      .split(' ')
+      .map(x => x[0])
+      .slice(0, 2)
+      .join('')
+      .toUpperCase();
 
     resetIdleTimer();
+    ['click', 'keydown', 'mousemove', 'scroll'].forEach(evt => {
+      window.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+
     renderView(activeTab);
-    showToast(`Welcome back, ${currentAdmin.name || 'Admin'}`);
+  }
+
+  function resetIdleTimer() {
+    clearTimeout(idleTimer);
+    let timeLeftMs = IDLE_TIMEOUT_MS;
+
+    idleTimer = setInterval(() => {
+      timeLeftMs -= 1000;
+      if (timeLeftMs <= 0) {
+        clearTimeout(idleTimer);
+        logout('Session timed out after 30 minutes of inactivity.');
+      } else {
+        const mins = Math.floor(timeLeftMs / 60000);
+        const secs = Math.floor((timeLeftMs % 60000) / 1000);
+        sessionCountdown.textContent = `${mins}m ${secs < 10 ? '0' : ''}${secs}s session`;
+      }
+    }, 1000);
   }
 
   function logout(reason) {
@@ -335,35 +257,30 @@
     });
   });
 
-  // ==========================================
-  // View Renderers
-  // ==========================================
-  async function renderView(viewName) {
+  async function renderView(view) {
     const container = document.getElementById('view-content-root');
-    if (!container) return;
-
     container.innerHTML = `
-      <div style="display:flex; justify-content:center; align-items:center; min-height:300px; gap:12px; color:var(--text-muted);">
-        <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
-        <span>Loading back office data...</span>
+      <div style="padding: 48px 24px; text-align: center; color: var(--text-dim);">
+        <span class="material-symbols-outlined" style="font-size: 2.2rem; animation: spin 1s linear infinite; display: inline-block;">sync</span>
+        <p style="margin-top: 10px; font-size: 0.9rem;">Loading live operational data...</p>
       </div>
     `;
 
-    switch (viewName) {
+    switch (view) {
       case 'overview':
         await renderOverview(container);
         break;
       case 'kyc':
         await renderKycQueue(container);
         break;
-      case 'virtual-cards':
-        await renderVirtualCards(container);
-        break;
       case 'users':
         await renderUsers(container);
         break;
       case 'transactions':
         await renderTransactions(container);
+        break;
+      case 'virtual-cards':
+        await renderVirtualCards(container);
         break;
       case 'funding':
         await renderFunding(container);
@@ -385,22 +302,38 @@
     }
   }
 
+  // ==========================================
   // 1. Overview Screen
+  // ==========================================
   async function renderOverview(container) {
     const res = await apiRequest('/admin/overview');
-    const data = res.data || MOCK_DATA.overview;
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderOverview(container));
+      return;
+    }
 
+    const data = res.data || {};
     const users = data.users || {};
-    const tx = data.transactions24h || {};
+    const tx = data.transactionsLast24h || {};
+    const byStatus = tx.byStatus || {};
     const kyc = data.kyc || {};
     const deposits = data.depositsToday || {};
+    const needsReview = data.needsReview || {};
+    const payouts = data.payouts || {};
+
+    // Update navigation badges with live counts
+    updateNavBadges(kyc.queueSize || 0, needsReview.total || 0);
+
+    const kycOldestText = kyc.oldestQueuedAgeMinutes != null
+      ? `${Math.round(kyc.oldestQueuedAgeMinutes / 60)}h ${kyc.oldestQueuedAgeMinutes % 60}m ago`
+      : 'Queue clear';
 
     container.innerHTML = `
       <div class="kpi-grid">
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-label">Total Users</span>
-            <div class="kpi-icon-wrap" style="background: rgba(59, 130, 246, 0.15); color: #3B82F6;">
+            <div class="kpi-icon-wrap" style="background: rgba(59, 130, 246, 0.12); color: #2563EB;">
               <span class="material-symbols-outlined">group</span>
             </div>
           </div>
@@ -411,90 +344,114 @@
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-label">KYC Queue</span>
-            <div class="kpi-icon-wrap" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B;">
+            <div class="kpi-icon-wrap" style="background: rgba(245, 158, 11, 0.12); color: #D97706;">
               <span class="material-symbols-outlined">badge</span>
             </div>
           </div>
           <div class="kpi-val">${kyc.queueSize || 0}</div>
-          <div class="kpi-sub">Oldest submission: ${kyc.oldestAgeHours || 0}h ago</div>
+          <div class="kpi-sub">Oldest: ${kycOldestText}</div>
         </div>
 
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-label">24h Transactions</span>
-            <div class="kpi-icon-wrap" style="background: rgba(16, 185, 129, 0.15); color: #10B981;">
+            <div class="kpi-icon-wrap" style="background: rgba(21, 140, 138, 0.12); color: var(--primary);">
               <span class="material-symbols-outlined">payments</span>
             </div>
           </div>
-          <div class="kpi-val">${(tx.success || 0).toLocaleString()}</div>
-          <div class="kpi-sub" style="color: ${tx.needsReview > 0 ? 'var(--warning)' : 'inherit'};">
-            ${tx.pending || 0} pending • ${tx.needsReview || 0} needs review
+          <div class="kpi-val">${(tx.total || 0).toLocaleString()}</div>
+          <div class="kpi-sub" style="color: ${needsReview.total > 0 ? 'var(--warning)' : 'inherit'};">
+            ${byStatus.SUCCESS || 0} success • ${byStatus.PENDING || 0} pending • ${needsReview.total || 0} review
           </div>
         </div>
 
         <div class="kpi-card">
           <div class="kpi-header">
             <span class="kpi-label">Absorbed Fees (Today)</span>
-            <div class="kpi-icon-wrap" style="background: rgba(197, 231, 108, 0.15); color: var(--accent-lime);">
+            <div class="kpi-icon-wrap" style="background: rgba(197, 231, 108, 0.2); color: var(--navy);">
               <span class="material-symbols-outlined">savings</span>
             </div>
           </div>
-          <div class="kpi-val">₦${((deposits.absorbedFeesKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</div>
-          <div class="kpi-sub">From ₦${((deposits.totalGrossKobo || 0) / 100).toLocaleString('en-NG')} gross deposits</div>
+          <div class="kpi-val">₦${((deposits.totalAbsorbedFeeKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</div>
+          <div class="kpi-sub">₦${((deposits.totalCreditedKobo || 0) / 100).toLocaleString('en-NG')} credited to wallets</div>
         </div>
       </div>
 
       <!-- Quick Action Panels -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
         <div class="table-card" style="padding: 24px;">
-          <h3 style="font-family: var(--font-heading); margin-bottom: 16px;">KYC Tier Distribution</h3>
+          <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--navy);">KYC Tier Distribution</h3>
           <div style="display: flex; flex-direction: column; gap: 14px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Tier 0 (Unverified / Basic)</span>
-              <span class="badge badge-neutral">${(users.tier0 || 0).toLocaleString()}</span>
+              <span style="font-size:0.9rem;">Tier 0 (Unverified / Basic)</span>
+              <span class="badge badge-neutral">${(users.kycTier?.tier0 || 0).toLocaleString()}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Tier 1 (NIN/BVN Verified)</span>
-              <span class="badge badge-info">${(users.tier1 || 0).toLocaleString()}</span>
+              <span style="font-size:0.9rem;">Tier 1 (NIN/BVN Verified)</span>
+              <span class="badge badge-info">${(users.kycTier?.tier1 || 0).toLocaleString()}</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span>Tier 2 (Biometrics & Proof of Address)</span>
-              <span class="badge badge-success">${(users.tier2 || 0).toLocaleString()}</span>
+              <span style="font-size:0.9rem;">Tier 2 (Biometrics & Address)</span>
+              <span class="badge badge-success">${(users.kycTier?.tier2 || 0).toLocaleString()}</span>
             </div>
           </div>
         </div>
 
         <div class="table-card" style="padding: 24px;">
-          <h3 style="font-family: var(--font-heading); margin-bottom: 16px;">Provider Deposit Collections (Today)</h3>
+          <h3 style="font-family: var(--font-heading); margin-bottom: 16px; color: var(--navy);">Pending Operations & Review</h3>
           <div style="display: flex; flex-direction: column; gap: 14px;">
-            ${(deposits.byProvider || []).map(p => `
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight: 500;">${p.provider}</span>
-                <div>
-                  <span style="font-weight: 600;">₦${((p.grossKobo || 0) / 100).toLocaleString('en-NG')}</span>
-                  <span style="font-size:0.75rem; color:var(--text-dim); margin-left:8px;">(Fee: ₦${((p.feeKobo || 0) / 100).toLocaleString('en-NG')})</span>
-                </div>
-              </div>
-            `).join('')}
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.9rem;">Transactions Needing Review</span>
+              <span class="badge ${needsReview.total > 0 ? 'badge-warning' : 'badge-neutral'}">${needsReview.total || 0}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.9rem;">Parked Payouts</span>
+              <span class="badge ${payouts.parked > 0 ? 'badge-danger' : 'badge-neutral'}">${payouts.parked || 0}</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:0.9rem;">Failed Webhooks (24h)</span>
+              <span class="badge badge-neutral">${data.failedWebhooks?.total || 0}</span>
+            </div>
           </div>
         </div>
       </div>
     `;
   }
 
+  function updateNavBadges(kycCount, reviewCount) {
+    const kycBadge = document.querySelector('.nav-item[data-view="kyc"] .nav-badge');
+    if (kycBadge) {
+      kycBadge.textContent = kycCount;
+      kycBadge.style.display = kycCount > 0 ? 'inline-block' : 'none';
+    }
+
+    const txBadge = document.querySelector('.nav-item[data-view="transactions"] .nav-badge');
+    if (txBadge) {
+      txBadge.textContent = reviewCount;
+      txBadge.style.display = reviewCount > 0 ? 'inline-block' : 'none';
+    }
+  }
+
+  // ==========================================
   // 2. KYC Queue & Review Screen
+  // ==========================================
   async function renderKycQueue(container) {
     const res = await apiRequest('/admin/kyc');
-    const items = res.data || MOCK_DATA.kycQueue;
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderKycQueue(container));
+      return;
+    }
+
+    const items = (res.data && res.data.items) || [];
 
     container.innerHTML = `
       <div class="toolbar">
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
-          <input type="text" id="kyc-search" placeholder="Search by name, ID last 4..." />
+          <input type="text" id="kyc-search" placeholder="Search by name, ID number..." oninput="window.filterKycTable()" />
         </div>
         <div class="filters-group">
-          <select class="filter-select" id="kyc-status-filter">
+          <select class="filter-select" id="kyc-status-filter" onchange="window.filterKycTable()">
             <option value="ALL">All Statuses</option>
             <option value="PENDING" selected>Pending</option>
             <option value="NEEDS_REVIEW">Needs Review</option>
@@ -503,7 +460,7 @@
       </div>
 
       <div class="table-card">
-        <table class="data-table">
+        <table class="data-table" id="kyc-table">
           <thead>
             <tr>
               <th>ID</th>
@@ -511,26 +468,32 @@
               <th>ID Type</th>
               <th>ID Last 4</th>
               <th>Match Score</th>
-              <th>Selfies</th>
               <th>Submitted</th>
               <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            ${items.map(k => `
+            ${items.length === 0 ? `
               <tr>
-                <td><code>${k.id}</code></td>
-                <td><strong>${k.userName}</strong></td>
-                <td><span class="badge badge-neutral">${k.idType}</span></td>
-                <td>•••• ${k.idLast4}</td>
+                <td colspan="8" style="text-align: center; padding: 48px 20px; color: var(--text-dim);">
+                  <span class="material-symbols-outlined" style="font-size: 2.5rem; display: block; margin-bottom: 8px; color: var(--primary);">verified</span>
+                  <strong style="color: var(--navy); font-size: 1rem;">KYC Queue is Clear</strong>
+                  <p style="font-size: 0.85rem; margin-top: 4px;">There are no pending identity verifications awaiting manual review.</p>
+                </td>
+              </tr>
+            ` : items.map(k => `
+              <tr data-status="${k.status}" data-search="${(k.userName || '') + ' ' + (k.idLast4 || '')}">
+                <td><code>${k.id.slice(0, 8)}...</code></td>
+                <td><strong>${k.userName || k.userEmailMasked || 'Applicant'}</strong></td>
+                <td><span class="badge badge-neutral">${k.idType || 'NIN'}</span></td>
+                <td>•••• ${k.idLast4 || '****'}</td>
                 <td>
-                  <span style="font-weight:600; color:${k.matchScore >= 90 ? 'var(--success)' : 'var(--warning)'};">
-                    ${k.matchScore}%
+                  <span style="font-weight:600; color:${(k.matchScore || 0) >= 90 ? 'var(--success)' : 'var(--warning)'};">
+                    ${k.matchScore != null ? k.matchScore + '%' : '—'}
                   </span>
                 </td>
-                <td>${k.selfieCount} frames</td>
-                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(k.submittedAt).toLocaleTimeString()}</td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${k.submittedAt ? new Date(k.submittedAt).toLocaleTimeString() : '—'}</td>
                 <td>
                   <span class="badge ${k.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}">
                     ${k.status}
@@ -549,150 +512,353 @@
     `;
   }
 
-  // Open KYC Review Modal with Selfie Viewer
+  window.filterKycTable = function () {
+    const search = document.getElementById('kyc-search')?.value.toLowerCase().trim() || '';
+    const status = document.getElementById('kyc-status-filter')?.value || 'ALL';
+    const rows = document.querySelectorAll('#kyc-table tbody tr');
+
+    rows.forEach(r => {
+      const rowStatus = r.getAttribute('data-status');
+      const rowSearch = (r.getAttribute('data-search') || '').toLowerCase();
+      const matchesStatus = status === 'ALL' || rowStatus === status;
+      const matchesSearch = !search || rowSearch.includes(search);
+      r.style.display = matchesStatus && matchesSearch ? '' : 'none';
+    });
+  };
+
+  // Open KYC Review Dialog with Real Biometric Selfies
   window.openKycReview = async function (kycId) {
-    const kyc = MOCK_DATA.kycQueue.find(x => x.id === kycId) || { id: kycId, userName: 'Applicant', idType: 'NIN', idLast4: '0000', matchScore: 90 };
-
-    modalTitle.textContent = `Review KYC Submission: ${kyc.userName}`;
+    modalTitle.textContent = 'KYC Biometric Verification';
     modalBody.innerHTML = `
-      <div style="display:flex; flex-direction:column; gap:18px;">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; background:var(--bg-app); padding:16px; border-radius:var(--radius-sm);">
-          <div>
-            <div style="font-size:0.75rem; color:var(--text-dim); text-transform:uppercase;">Applicant</div>
-            <div style="font-weight:600; font-size:1.05rem;">${kyc.userName}</div>
-          </div>
-          <div>
-            <div style="font-size:0.75rem; color:var(--text-dim); text-transform:uppercase;">Document & Match Score</div>
-            <div style="font-weight:600; color:var(--success); font-size:1.05rem;">${kyc.idType} • ${kyc.matchScore}% Match</div>
-          </div>
-        </div>
+      <div style="padding: 24px; text-align: center; color: var(--text-dim);">
+        <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
+        <p style="margin-top: 8px;">Fetching encrypted biometric frames...</p>
+      </div>
+    `;
+    modalFooter.innerHTML = '';
+    modalBackdrop.classList.add('active');
 
-        <div>
-          <div class="section-label">Liveness & Biometric Verification Frames</div>
-          <div class="selfies-grid">
-            <div class="selfie-frame-card">
-              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
-                <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
-              </div>
-              <span class="selfie-frame-badge">Frame 1: Center</span>
-            </div>
-            <div class="selfie-frame-card">
-              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
-                <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
-              </div>
-              <span class="selfie-frame-badge">Frame 2: Turn Left</span>
-            </div>
-            <div class="selfie-frame-card">
-              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
-                <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
-              </div>
-              <span class="selfie-frame-badge">Frame 3: Blink</span>
-            </div>
-            <div class="selfie-frame-card">
-              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
-                <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
-              </div>
-              <span class="selfie-frame-badge">Frame 4: Smile</span>
-            </div>
-          </div>
-        </div>
+    const res = await apiRequest(`/admin/kyc/${kycId}/selfies`);
+    const selfieData = res.data || {};
+    const frames = selfieData.frames || [];
 
-        <div>
-          <label class="section-label">Review Decision Notes / Rejection Reason</label>
-          <textarea id="kyc-decision-reason" class="reason-textarea" placeholder="Enter reason (required if rejecting, 10-500 characters)..."></textarea>
+    modalBody.innerHTML = `
+      <div class="drawer-section">
+        <div class="section-label">Applicant Verification</div>
+        <div class="detail-row"><span>KYC ID</span><span><code>${kycId}</code></span></div>
+        <div class="detail-row"><span>Match Score</span><span style="font-weight:700; color:var(--primary);">${selfieData.matchScore != null ? selfieData.matchScore + '%' : 'Awaiting'}</span></div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div class="section-label">Liveness & Biometric Verification Frames</div>
+        <div class="selfies-grid">
+          ${frames.length === 0 ? `
+            <div style="grid-column: 1 / -1; padding: 24px; text-align: center; color: var(--text-dim); background: var(--bg-app); border-radius: var(--radius-sm);">
+              No biometric selfie frames attached to this record.
+            </div>
+          ` : frames.map((f, i) => `
+            <div class="selfie-frame-card">
+              <img src="${f.url}" alt="Frame ${i + 1}" />
+              <span class="selfie-frame-badge">Frame ${i + 1}</span>
+            </div>
+          `).join('')}
         </div>
+      </div>
+
+      <div class="form-field" style="margin-top: 16px;">
+        <label>Decision Reason (Mandatory for Audit)</label>
+        <textarea id="kyc-review-reason" class="reason-textarea" placeholder="State operational verification reasoning..."></textarea>
       </div>
     `;
 
     modalFooter.innerHTML = `
       <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button class="btn-secondary" style="color:var(--danger); border-color:var(--danger);" onclick="window.submitKycDecision('${kyc.id}', 'REJECT')">
-        Reject KYC
+      <button class="btn-primary" style="background:var(--danger); width:auto;" onclick="window.submitKycDecision('${kycId}', 'reject')">
+        Reject
       </button>
-      <button class="btn-primary" style="background:var(--success); width:auto;" onclick="window.submitKycDecision('${kyc.id}', 'APPROVE')">
-        Approve Tier 2
+      <button class="btn-primary" style="width:auto;" onclick="window.submitKycDecision('${kycId}', 'approve')">
+        Approve Verification
       </button>
     `;
-
-    modalBackdrop.classList.add('active');
   };
 
-  window.submitKycDecision = async function (kycId, decision) {
-    const reason = (document.getElementById('kyc-decision-reason')?.value || '').trim();
-    if (decision === 'REJECT' && reason.length < 10) {
-      alert('A detailed rejection reason of at least 10 characters is required.');
+  window.submitKycDecision = async function (kycId, outcome) {
+    const reason = document.getElementById('kyc-review-reason')?.value.trim();
+    if (!reason || reason.length < 8) {
+      alert('A clear audit justification of at least 8 characters is required.');
       return;
     }
 
-    const endpoint = decision === 'APPROVE' ? `/admin/kyc/${kycId}/approve` : `/admin/kyc/${kycId}/reject`;
-    const res = await apiRequest(endpoint, {
+    const res = await apiRequest(`/admin/kyc/${kycId}/${outcome}`, {
       method: 'POST',
-      body: JSON.stringify({ reason: reason || 'Biometric verification approved by admin' })
+      body: JSON.stringify({ reason })
     });
 
+    if (!res.success) {
+      alert(`Decision failed: ${res.error}`);
+      return;
+    }
+
     closeModal();
-    showToast(`KYC ${kycId} has been ${decision === 'APPROVE' ? 'Approved' : 'Rejected'}.`);
+    showToast(`KYC verification marked as ${outcome.toUpperCase()}`);
     renderView('kyc');
   };
 
+  // ==========================================
   // 3. User Management Screen
+  // ==========================================
   async function renderUsers(container) {
     const res = await apiRequest('/admin/users');
-    const users = res.data || MOCK_DATA.users;
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderUsers(container));
+      return;
+    }
+
+    const users = (res.data && res.data.items) || [];
 
     container.innerHTML = `
       <div class="toolbar">
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
-          <input type="text" id="users-search" placeholder="Search by name, email, phone, user id..." />
+          <input type="text" id="users-search" placeholder="Search by name, email, phone..." oninput="window.filterUsersTable()" />
         </div>
         <div class="filters-group">
-          <select class="filter-select" id="users-tier-filter">
-            <option value="ALL">All KYC Tiers</option>
-            <option value="0">Tier 0</option>
-            <option value="1">Tier 1</option>
-            <option value="2">Tier 2</option>
+          <select class="filter-select" id="users-role-filter" onchange="window.filterUsersTable()">
+            <option value="ALL">All Roles</option>
+            <option value="USER">Regular Users</option>
+            <option value="ADMIN">Administrators</option>
           </select>
         </div>
       </div>
 
       <div class="table-card">
-        <table class="data-table">
+        <table class="data-table" id="users-table">
           <thead>
             <tr>
-              <th>User ID</th>
               <th>Full Name</th>
-              <th>Contact</th>
-              <th>KYC Tier</th>
-              <th>Wallet Balance</th>
-              <th>Status</th>
+              <th>Contact Details</th>
+              <th>Role</th>
+              <th>KYC Status</th>
+              <th>Verified</th>
               <th>Joined</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            ${users.map(u => `
-              <tr class="clickable" onclick="window.openUserDrawer('${u.id}')">
-                <td><code>${u.id}</code></td>
-                <td><strong>${u.name}</strong></td>
-                <td>
-                  <div>${u.phone}</div>
-                  <div style="font-size:0.75rem; color:var(--text-dim);">${u.email}</div>
+            ${users.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  No user accounts found.
                 </td>
+              </tr>
+            ` : users.map(u => {
+              const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User';
+              return `
+                <tr class="clickable" data-role="${u.role}" data-search="${fullName + ' ' + (u.emailMasked || '') + ' ' + (u.phoneMasked || '')}" onclick="window.openUserDrawer('${u.id}')">
+                  <td>
+                    <strong>${fullName}</strong>
+                    <div style="font-size:0.75rem; color:var(--text-dim);"><code>${u.id.slice(0, 8)}...</code></div>
+                  </td>
+                  <td>
+                    <div>${u.phoneMasked || 'No phone'}</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">${u.emailMasked || '—'}</div>
+                  </td>
+                  <td>
+                    <span class="badge ${u.role === 'ADMIN' ? 'badge-warning' : 'badge-neutral'}">${u.role}</span>
+                  </td>
+                  <td>
+                    <span class="badge ${u.kycStatus === 'APPROVED' ? 'badge-success' : u.kycStatus === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}">
+                      ${u.kycStatus || 'NONE'}
+                    </span>
+                  </td>
+                  <td>
+                    <span style="font-size:0.8rem; color:${u.emailVerified ? 'var(--success)' : 'var(--text-dim)'};">
+                      ${u.emailVerified ? '✓ Email' : 'Email unverified'}
+                    </span>
+                  </td>
+                  <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(u.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.openUserDrawer('${u.id}')">
+                      Inspect
+                    </button>
+                  </td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  window.filterUsersTable = function () {
+    const search = document.getElementById('users-search')?.value.toLowerCase().trim() || '';
+    const role = document.getElementById('users-role-filter')?.value || 'ALL';
+    const rows = document.querySelectorAll('#users-table tbody tr');
+
+    rows.forEach(r => {
+      const rowRole = r.getAttribute('data-role');
+      const rowSearch = (r.getAttribute('data-search') || '').toLowerCase();
+      const matchesRole = role === 'ALL' || rowRole === role;
+      const matchesSearch = !search || rowSearch.includes(search);
+      r.style.display = matchesRole && matchesSearch ? '' : 'none';
+    });
+  };
+
+  // Open User Drawer with Real Live Profile and Wallet Data
+  window.openUserDrawer = async function (userId) {
+    drawerTitle.textContent = `User Profile Inspection`;
+    drawerBody.innerHTML = `
+      <div style="padding: 32px; text-align: center; color: var(--text-dim);">
+        <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
+        <p style="margin-top: 8px;">Fetching customer records & balances...</p>
+      </div>
+    `;
+    drawerBackdrop.classList.add('active');
+
+    const res = await apiRequest(`/admin/users/${userId}`);
+    if (!res.success) {
+      drawerBody.innerHTML = `<div class="alert-box alert-error" style="display:block;">${res.error}</div>`;
+      return;
+    }
+
+    const d = res.data || {};
+    const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'User';
+    const walletKobo = d.wallet?.balanceKobo ?? 0;
+    const balanceNaira = (walletKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    const fundingAccounts = d.fundingAccounts || [];
+    const recentTx = d.recentTransactions || [];
+
+    drawerTitle.textContent = fullName;
+    drawerBody.innerHTML = `
+      <div class="drawer-section">
+        <div class="section-label">Account Overview</div>
+        <div class="detail-row"><span>User ID</span><span><code>${d.id}</code></span></div>
+        <div class="detail-row"><span>Full Name</span><span>${fullName}</span></div>
+        <div class="detail-row"><span>Email</span><span>${d.contact?.emailMasked || '—'}</span></div>
+        <div class="detail-row"><span>Phone</span><span>${d.contact?.phoneMasked || '—'}</span></div>
+        <div class="detail-row"><span>KYC Status</span><span class="badge ${d.kyc?.status === 'APPROVED' ? 'badge-success' : 'badge-neutral'}">${d.kyc?.status || 'NONE'} (Tier ${d.kyc?.tier || 0})</span></div>
+        <div class="detail-row"><span>Wallet Balance</span><span style="font-size:1.15rem; color:var(--navy); font-weight:700;">₦${balanceNaira}</span></div>
+        <div class="detail-row"><span>Security Flags</span><span>${d.flags?.pinSet ? 'PIN Active' : 'No PIN'} • ${d.flags?.pinLocked ? '<strong style="color:var(--danger);">LOCKED</strong>' : 'Unlocked'}</span></div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="section-label">Dedicated Virtual Funding Accounts</div>
+        ${fundingAccounts.length === 0 ? `
+          <div style="font-size: 0.85rem; color: var(--text-dim); background: var(--bg-app); padding: 12px; border-radius: var(--radius-sm);">
+            No dedicated virtual accounts assigned yet.
+          </div>
+        ` : fundingAccounts.map(fa => `
+          <div style="background:var(--bg-app); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:6px; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:600; color:var(--navy);">${fa.bankName} (${fa.provider})</span>
+              <span class="badge badge-success">Active</span>
+            </div>
+            <div style="font-family:monospace; font-size:1.1rem; color:var(--navy); font-weight:700;">${fa.accountNumber}</div>
+            <div style="font-size:0.75rem; color:var(--text-dim);">${fa.accountName}</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="drawer-section">
+        <div class="section-label">Recent Customer Transactions</div>
+        ${recentTx.length === 0 ? `
+          <div style="font-size: 0.85rem; color: var(--text-dim); background: var(--bg-app); padding: 12px; border-radius: var(--radius-sm);">
+            No transaction records.
+          </div>
+        ` : `
+          <table class="data-table" style="font-size:0.82rem;">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${recentTx.map(t => `
+                <tr>
+                  <td><strong>${t.type}</strong></td>
+                  <td>₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG')}</td>
+                  <td><span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${t.status}</span></td>
+                  <td style="color:var(--text-dim);">${new Date(t.createdAt).toLocaleDateString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+    `;
+  };
+
+  // ==========================================
+  // 4. Transactions Screen
+  // ==========================================
+  async function renderTransactions(container) {
+    const res = await apiRequest('/admin/transactions');
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderTransactions(container));
+      return;
+    }
+
+    const txs = (res.data && res.data.items) || [];
+
+    container.innerHTML = `
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="material-symbols-outlined">search</span>
+          <input type="text" id="tx-search" placeholder="Search by ID, user, provider..." oninput="window.filterTxTable()" />
+        </div>
+        <div class="filters-group">
+          <select class="filter-select" id="tx-status-filter" onchange="window.filterTxTable()">
+            <option value="ALL">All Statuses</option>
+            <option value="SUCCESS">Success</option>
+            <option value="PENDING">Pending</option>
+            <option value="FAILED">Failed</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <table class="data-table" id="tx-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>User</th>
+              <th>Amount</th>
+              <th>Fee</th>
+              <th>Provider</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${txs.length === 0 ? `
+              <tr>
+                <td colspan="9" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  No transactions recorded yet.
+                </td>
+              </tr>
+            ` : txs.map(t => `
+              <tr class="clickable" data-status="${t.status}" data-search="${t.id + ' ' + (t.userEmailMasked || '') + ' ' + (t.provider || '')}" onclick="window.inspectTx('${t.id}')">
+                <td><code>${t.id.slice(0, 8)}...</code></td>
+                <td><strong>${t.type}</strong></td>
+                <td>${t.userEmailMasked || '—'}</td>
+                <td><strong style="color:var(--navy);">₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
+                <td>₦${((t.feeKobo || 0) / 100).toFixed(2)}</td>
+                <td><span class="badge badge-neutral">${t.provider || 'internal'}</span></td>
                 <td>
-                  <span class="badge ${u.kycTier === 2 ? 'badge-success' : u.kycTier === 1 ? 'badge-info' : 'badge-neutral'}">
-                    Tier ${u.kycTier}
+                  <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}">
+                    ${t.status}
                   </span>
+                  ${t.needsReview ? '<span class="badge badge-danger" style="margin-left:4px;">REVIEW</span>' : ''}
                 </td>
-                <td><strong>₦${u.walletBalanceNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(t.updatedAt || t.createdAt).toLocaleDateString()}</td>
                 <td>
-                  ${u.isFrozen
-                    ? '<span class="badge badge-danger">FROZEN</span>'
-                    : '<span class="badge badge-success">ACTIVE</span>'}
-                </td>
-                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(u.createdAt).toLocaleDateString()}</td>
-                <td>
-                  <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.openUserDrawer('${u.id}')">
+                  <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.inspectTx('${t.id}')">
                     Inspect
                   </button>
                 </td>
@@ -704,268 +870,148 @@
     `;
   }
 
-  // Open User Drawer
-  window.openUserDrawer = async function (userId) {
-    const user = MOCK_DATA.users.find(x => x.id === userId) || { id: userId, name: 'User', email: 'user@jemabill.com', phone: '0800000000', kycTier: 1, walletBalanceNaira: 0, isFrozen: false };
+  window.filterTxTable = function () {
+    const search = document.getElementById('tx-search')?.value.toLowerCase().trim() || '';
+    const status = document.getElementById('tx-status-filter')?.value || 'ALL';
+    const rows = document.querySelectorAll('#tx-table tbody tr');
 
-    drawerTitle.textContent = `User Profile: ${user.name}`;
+    rows.forEach(r => {
+      const rowStatus = r.getAttribute('data-status');
+      const rowSearch = (r.getAttribute('data-search') || '').toLowerCase();
+      const matchesStatus = status === 'ALL' || rowStatus === status;
+      const matchesSearch = !search || rowSearch.includes(search);
+      r.style.display = matchesStatus && matchesSearch ? '' : 'none';
+    });
+  };
+
+  // Inspect Transaction Details with Live History Audit Trail
+  window.inspectTx = async function (txId) {
+    drawerTitle.textContent = `Transaction Inspection`;
     drawerBody.innerHTML = `
-      <div class="drawer-section">
-        <div class="section-label">Account Overview</div>
-        <div class="detail-row"><span>User ID</span><span><code>${user.id}</code></span></div>
-        <div class="detail-row"><span>Full Name</span><span>${user.name}</span></div>
-        <div class="detail-row"><span>Masked Phone</span><span>${user.phone}</span></div>
-        <div class="detail-row"><span>Masked Email</span><span>${user.email}</span></div>
-        <div class="detail-row"><span>KYC Level</span><span class="badge badge-info">Tier ${user.kycTier}</span></div>
-        <div class="detail-row"><span>Wallet Balance</span><span style="font-size:1.1rem; color:var(--accent-lime); font-weight:700;">₦${user.walletBalanceNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
-        <div class="detail-row"><span>Account Status</span><span>${user.isFrozen ? '<span class="badge badge-danger">FROZEN</span>' : '<span class="badge badge-success">NORMAL</span>'}</span></div>
-      </div>
-
-      <div class="drawer-section">
-        <div class="section-label">Dedicated Virtual Funding Accounts</div>
-        <div style="background:var(--bg-app); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; flex-direction:column; gap:8px;">
-          <div style="display:flex; justify-content:space-between;">
-            <span style="font-weight:600; color:var(--text-main);">Wema Bank (Monnify)</span>
-            <span class="badge badge-neutral">Active</span>
-          </div>
-          <div style="font-family:monospace; font-size:1.1rem; color:var(--text-main);">7820194821</div>
-          <div style="font-size:0.75rem; color:var(--text-dim);">JemaBill / ${user.name}</div>
-        </div>
-      </div>
-
-      <div class="drawer-section">
-        <div class="section-label">Administrative Operations</div>
-        <div style="display:flex; gap:12px; margin-top:8px;">
-          ${user.isFrozen ? `
-            <button class="btn-primary" style="background:var(--success);" onclick="window.confirmUserFreeze('${user.id}', false)">
-              Unfreeze Account
-            </button>
-          ` : `
-            <button class="btn-primary" style="background:var(--danger);" onclick="window.confirmUserFreeze('${user.id}', true)">
-              Freeze Account
-            </button>
-          `}
-        </div>
+      <div style="padding: 32px; text-align: center; color: var(--text-dim);">
+        <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
+        <p style="margin-top: 8px;">Fetching transaction history & provider data...</p>
       </div>
     `;
-
     drawerBackdrop.classList.add('active');
-  };
 
-  // High-Risk Confirmation Dialog for Freezing Users
-  window.confirmUserFreeze = function (userId, freeze) {
-    modalTitle.textContent = freeze ? 'Confirm Account Freeze' : 'Confirm Account Unfreeze';
-    modalBody.innerHTML = `
-      <div class="confirm-warning-box">
-        <span class="material-symbols-outlined">warning</span>
-        <div>
-          <strong>High-Risk Administrative Action:</strong>
-          <p>${freeze ? 'Freezing this user will prevent all outgoing transfers, utility bill payments, and card debits immediately.' : 'Unfreezing will restore all spending capabilities.'}</p>
-        </div>
-      </div>
-
-      <label class="section-label">Mandatory Reason (Audited, 10-200 characters)</label>
-      <textarea id="freeze-reason" class="reason-textarea" placeholder="State operational justification..."></textarea>
-    `;
-
-    modalFooter.innerHTML = `
-      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button class="btn-primary" style="background: ${freeze ? 'var(--danger)' : 'var(--success)'}; width:auto;" onclick="window.executeFreeze('${userId}', ${freeze})">
-        Confirm ${freeze ? 'Freeze' : 'Unfreeze'}
-      </button>
-    `;
-
-    modalBackdrop.classList.add('active');
-  };
-
-  window.executeFreeze = async function (userId, freeze) {
-    const reason = (document.getElementById('freeze-reason')?.value || '').trim();
-    if (reason.length < 10) {
-      alert('A valid reason of at least 10 characters is required for auditing.');
+    const res = await apiRequest(`/admin/transactions/${txId}`);
+    if (!res.success) {
+      drawerBody.innerHTML = `<div class="alert-box alert-error" style="display:block;">${res.error}</div>`;
       return;
     }
 
-    const endpoint = `/admin/users/${userId}/${freeze ? 'freeze' : 'unfreeze'}`;
-    await apiRequest(endpoint, {
-      method: 'POST',
-      body: JSON.stringify({ reason })
-    });
+    const tx = res.data || {};
+    const history = tx.history || [];
 
-    closeModal();
-    closeDrawer();
-    showToast(`User ${userId} has been ${freeze ? 'frozen' : 'unfrozen'}.`);
-    renderView('users');
-  };
-
-  // 4. Transactions Inspector Screen
-  async function renderTransactions(container) {
-    const res = await apiRequest('/admin/transactions');
-    const txs = res.data || MOCK_DATA.transactions;
-
-    container.innerHTML = `
-      <div class="toolbar">
-        <div class="search-box">
-          <span class="material-symbols-outlined">search</span>
-          <input type="text" id="tx-search" placeholder="Search by reference, user, counterparty..." />
-        </div>
-        <div class="filters-group">
-          <select class="filter-select" id="tx-status-filter">
-            <option value="ALL">All Statuses</option>
-            <option value="SUCCESS">Success</option>
-            <option value="PENDING">Pending</option>
-            <option value="FAILED">Failed</option>
-            <option value="NEEDS_REVIEW">Needs Review</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="table-card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Reference</th>
-              <th>Type</th>
-              <th>User</th>
-              <th>Counterparty</th>
-              <th>Amount</th>
-              <th>Fee</th>
-              <th>Status</th>
-              <th>Time</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${txs.map(t => `
-              <tr>
-                <td><code>${t.id}</code></td>
-                <td><span class="badge badge-neutral">${t.type}</span></td>
-                <td><strong>${t.user}</strong></td>
-                <td style="color:var(--text-muted);">${t.counterparty}</td>
-                <td><strong style="color: ${t.direction === 'CREDIT' ? 'var(--success)' : 'inherit'};">₦${t.amountNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
-                <td>₦${t.feeNaira.toFixed(2)}</td>
-                <td>
-                  <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'PENDING' ? 'badge-warning' : 'badge-danger'}">
-                    ${t.status}
-                  </span>
-                </td>
-                <td style="color:var(--text-dim); font-size:0.8rem;">${new Date(t.date).toLocaleTimeString()}</td>
-                <td>
-                  <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="window.inspectTx('${t.id}')">
-                    Manage
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  window.inspectTx = function (txId) {
-    const tx = MOCK_DATA.transactions.find(x => x.id === txId) || { id: txId, type: 'BANK_TRANSFER', status: 'PENDING', amountNaira: 50000, feeNaira: 150 };
-
-    drawerTitle.textContent = `Transaction: ${tx.id}`;
+    drawerTitle.textContent = `Transaction: ${tx.id.slice(0, 8)}...`;
     drawerBody.innerHTML = `
       <div class="drawer-section">
-        <div class="section-label">Transaction Record</div>
-        <div class="detail-row"><span>ID / Reference</span><span><code>${tx.id}</code></span></div>
+        <div class="section-label">Transaction Details</div>
+        <div class="detail-row"><span>ID / UUID</span><span><code>${tx.id}</code></span></div>
+        <div class="detail-row"><span>Customer</span><span>${tx.userEmailMasked || '—'}</span></div>
         <div class="detail-row"><span>Type</span><span><span class="badge badge-neutral">${tx.type}</span></span></div>
-        <div class="detail-row"><span>Status</span><span><span class="badge badge-warning">${tx.status}</span></span></div>
-        <div class="detail-row"><span>Amount</span><span>₦${tx.amountNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
-        <div class="detail-row"><span>Transfer Fee</span><span>₦${tx.feeNaira.toFixed(2)}</span></div>
+        <div class="detail-row"><span>Status</span><span><span class="badge ${tx.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${tx.status}</span></span></div>
+        <div class="detail-row"><span>Amount</span><span style="font-size:1.1rem; color:var(--navy); font-weight:700;">₦${((tx.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
+        <div class="detail-row"><span>Fee</span><span>₦${((tx.feeKobo || 0) / 100).toFixed(2)}</span></div>
+        <div class="detail-row"><span>Provider</span><span>${tx.provider || 'internal'}</span></div>
+        <div class="detail-row"><span>Requery Attempts</span><span>${tx.requeryAttempts || 0}</span></div>
       </div>
 
       <div class="drawer-section">
-        <div class="section-label">Intervention Actions</div>
-        <div style="display:flex; flex-direction:column; gap:10px; margin-top:10px;">
+        <div class="section-label">Audit & Lifecycle History</div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${history.length === 0 ? `
+            <div style="font-size:0.85rem; color:var(--text-dim);">No state transitions recorded.</div>
+          ` : history.map(h => `
+            <div style="background:var(--bg-app); padding:10px 14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); font-size:0.82rem;">
+              <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                <span class="badge badge-info">${h.action}</span>
+                <span style="color:var(--text-dim);">${new Date(h.createdAt).toLocaleTimeString()}</span>
+              </div>
+              <div style="color:var(--text-main); font-weight:500;">${h.after?.reason || h.actorId}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <div class="section-label">Operational Interventions</div>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
           <button class="btn-secondary" onclick="window.requeryTx('${tx.id}')">
             <span class="material-symbols-outlined">sync</span> Requery Provider
           </button>
           <button class="btn-secondary" onclick="window.parkTx('${tx.id}')">
-            <span class="material-symbols-outlined">pause</span> Park Transaction
-          </button>
-          <button class="btn-primary" style="background:var(--danger);" onclick="window.resolveTx('${tx.id}')">
-            <span class="material-symbols-outlined">gavel</span> Force Resolve (Admin)
+            <span class="material-symbols-outlined">pause</span> Park for Review
           </button>
         </div>
       </div>
     `;
-
-    drawerBackdrop.classList.add('active');
   };
 
   window.requeryTx = async function (txId) {
-    await apiRequest(`/admin/transactions/${txId}/requery`, { method: 'POST' });
-    showToast(`Requery request sent for ${txId}`);
-    closeDrawer();
-  };
-
-  window.parkTx = async function (txId) {
-    await apiRequest(`/admin/transactions/${txId}/park`, { method: 'POST' });
-    showToast(`Transaction ${txId} parked for manual review`);
-    closeDrawer();
-  };
-
-  window.resolveTx = function (txId) {
-    modalTitle.textContent = 'Confirm Force Resolution';
-    modalBody.innerHTML = `
-      <div class="confirm-warning-box">
-        <span class="material-symbols-outlined">warning</span>
-        <div>
-          <strong>Financial Resolution Action:</strong>
-          <p>Resolving an unconfirmed payout moves funds or confirms delivery manually. Requires explicit operational justification.</p>
-        </div>
-      </div>
-      <label class="section-label">Resolution Reason (Audited)</label>
-      <textarea id="resolve-reason" class="reason-textarea" placeholder="State reason for resolution..."></textarea>
-    `;
-    modalFooter.innerHTML = `
-      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button class="btn-primary" style="background:var(--danger); width:auto;" onclick="window.submitResolveTx('${txId}')">
-        Execute Force Resolution
-      </button>
-    `;
-    modalBackdrop.classList.add('active');
-  };
-
-  window.submitResolveTx = async function (txId) {
-    const reason = (document.getElementById('resolve-reason')?.value || '').trim();
-    if (reason.length < 10) {
-      alert('Resolution reason must be at least 10 characters.');
+    const res = await apiRequest(`/admin/transactions/${txId}/requery`, { method: 'POST' });
+    if (!res.success) {
+      alert(`Requery failed: ${res.error}`);
       return;
     }
-    await apiRequest(`/admin/transactions/${txId}/resolve`, {
-      method: 'POST',
-      body: JSON.stringify({ reason, confirm: true })
-    });
-    closeModal();
+    showToast(`Requery dispatched for ${txId.slice(0, 8)}`);
     closeDrawer();
-    showToast(`Transaction ${txId} resolved.`);
     renderView('transactions');
   };
 
+  window.parkTx = async function (txId) {
+    const reason = prompt('State reason for parking transaction (min 5 chars):', 'Awaiting provider confirmation');
+    if (!reason || reason.trim().length < 5) return;
+
+    const res = await apiRequest(`/admin/transactions/${txId}/park`, {
+      method: 'POST',
+      body: JSON.stringify({ reason })
+    });
+    if (!res.success) {
+      alert(`Park failed: ${res.error}`);
+      return;
+    }
+    showToast(`Transaction parked for manual review`);
+    closeDrawer();
+    renderView('transactions');
+  };
+
+  // ==========================================
   // 5. Funding & Absorbed Fees Screen
+  // ==========================================
   async function renderFunding(container) {
-    const res = await apiRequest('/admin/funding/deposits');
-    const deposits = res.data || MOCK_DATA.fundingDeposits;
+    const [depRes, summaryRes] = await Promise.all([
+      apiRequest('/admin/funding/deposits'),
+      apiRequest('/admin/funding/fees-summary')
+    ]);
+
+    if (!depRes.success) {
+      container.innerHTML = renderErrorAlert(depRes.error, () => renderFunding(container));
+      return;
+    }
+
+    const deposits = (depRes.data && depRes.data.items) || [];
+    const summary = summaryRes.data || {};
+    const totalAbsorbedNaira = ((summary.totalAbsorbedFeeKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    const totalDeposits = summary.totalDepositCount || deposits.length;
 
     container.innerHTML = `
       <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
         <div class="kpi-card">
           <span class="kpi-label">Total Absorbed Fees</span>
-          <div class="kpi-val" style="color:var(--accent-lime);">₦24,125.00</div>
-          <div class="kpi-sub">Cost of 100% free funding for customers</div>
+          <div class="kpi-val" style="color:var(--primary);">₦${totalAbsorbedNaira}</div>
+          <div class="kpi-sub">Cost of 100% free deposit funding for customers</div>
         </div>
         <div class="kpi-card">
-          <span class="kpi-label">Monnify Collections</span>
-          <div class="kpi-val">₦3,200,000.00</div>
-          <div class="kpi-sub">₦16,000 provider fees absorbed</div>
+          <span class="kpi-label">Recorded Inbound Deposits</span>
+          <div class="kpi-val">${totalDeposits.toLocaleString()}</div>
+          <div class="kpi-sub">Across Monnify & PaymentPoint</div>
         </div>
         <div class="kpi-card">
-          <span class="kpi-label">PaymentPoint Collections</span>
-          <div class="kpi-val">₦1,625,000.00</div>
-          <div class="kpi-sub">₦8,125 provider fees absorbed</div>
+          <span class="kpi-label">Active Funding Providers</span>
+          <div class="kpi-val">${(summary.perProvider || []).length}</div>
+          <div class="kpi-sub">Automated sweep & real-time webhook routing</div>
         </div>
       </div>
 
@@ -975,29 +1021,29 @@
             <tr>
               <th>Reference</th>
               <th>Provider</th>
-              <th>User</th>
-              <th>Gross Deposited</th>
+              <th>Customer</th>
+              <th>Gross Sent</th>
               <th>Fee Absorbed</th>
               <th>Status</th>
               <th>Timestamp</th>
-              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            ${deposits.map(d => `
+            ${deposits.length === 0 ? `
               <tr>
-                <td><code>${d.reference}</code></td>
-                <td><strong>${d.provider}</strong></td>
-                <td>${d.user}</td>
-                <td><strong style="color:var(--success);">₦${d.grossNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
-                <td><span style="color:var(--accent-lime); font-weight:600;">₦${d.providerFeeNaira.toFixed(2)}</span></td>
-                <td><span class="badge ${d.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${d.status}</span></td>
-                <td style="color:var(--text-dim); font-size:0.8rem;">${new Date(d.date).toLocaleTimeString()}</td>
-                <td>
-                  <button class="btn-secondary" style="padding:6px 12px; font-size:0.8rem;" onclick="window.recheckDeposit('${d.id}')">
-                    Recheck
-                  </button>
+                <td colspan="7" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  No deposit records found in this window.
                 </td>
+              </tr>
+            ` : deposits.map(d => `
+              <tr>
+                <td><code>${d.externalReference || d.id.slice(0, 12)}</code></td>
+                <td><strong>${d.provider}</strong></td>
+                <td>${d.userEmailMasked || '—'}</td>
+                <td><strong style="color:var(--navy);">₦${((d.grossKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
+                <td><span style="color:var(--primary); font-weight:600;">₦${((d.providerFeeKobo || 0) / 100).toFixed(2)}</span></td>
+                <td><span class="badge ${d.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${d.status}</span></td>
+                <td style="color:var(--text-dim); font-size:0.8rem;">${new Date(d.createdAt).toLocaleString()}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -1006,29 +1052,81 @@
     `;
   }
 
-  window.recheckDeposit = async function (depId) {
-    await apiRequest(`/admin/funding/deposits/${depId}/recheck`, { method: 'POST' });
-    showToast(`Recheck triggered for deposit ${depId}`);
-  };
+  // ==========================================
+  // 6. Provider Health Screen
+  // ==========================================
+  async function renderProviders(container) {
+    const res = await apiRequest('/admin/providers/health');
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderProviders(container));
+      return;
+    }
 
-  // 5b. Cashback Rates & Rules Manager
-  const CASHBACK_SERVICES = [
-    { type: 'AIRTIME', name: 'Airtime Top-up', icon: 'phone_android', defaultBps: 100 },
-    { type: 'DATA', name: 'Data Bundles', icon: 'wifi', defaultBps: 100 },
-    { type: 'ELECTRICITY', name: 'Electricity Bills', icon: 'bolt', defaultBps: 50 },
-    { type: 'CABLE_TV', name: 'Cable TV Subscriptions', icon: 'tv', defaultBps: 50 },
-    { type: 'EXAM_PIN', name: 'Examination PINs (WAEC/NECO/NABTEB)', icon: 'school', defaultBps: 100 },
-    { type: 'JAMB', name: 'JAMB UTME / DE PIN', icon: 'local_library', defaultBps: 100 },
-    { type: 'BETTING_FUNDING', name: 'Betting Wallet Funding', icon: 'sports_soccer', defaultBps: 50 },
-    { type: 'TELECOM_SMILE', name: 'Smile Internet', icon: 'language', defaultBps: 50 },
-    { type: 'TELECOM_SPECTRANET', name: 'Spectranet Internet', icon: 'router', defaultBps: 50 },
-    { type: 'EDUCATION_DATA', name: 'Education / School Fees', icon: 'menu_book', defaultBps: 50 },
-    { type: 'BULK_SMS', name: 'Bulk SMS', icon: 'sms', defaultBps: 50 },
-    { type: 'RECHARGE_CARD_PRINT', name: 'Airtime Printing', icon: 'print', defaultBps: 50 },
-    { type: 'VEHICLE_INSURANCE', name: 'Vehicle Insurance', icon: 'directions_car', defaultBps: 50 },
-    { type: 'COUPON', name: 'Coupons / Gift Cards', icon: 'redeem', defaultBps: 50 },
-  ];
+    const data = res.data || {};
+    const providers = data.providers || [];
 
+    container.innerHTML = `
+      <div class="providers-grid">
+        ${providers.map(p => {
+          const meta = PROVIDER_METADATA[p.provider] || { name: p.provider, type: 'Integration', icon: 'dns' };
+          const isOperational = p.enabled && (p.balance != null || p.balanceUnavailableReason === 'no_balance_endpoint' || p.balanceUnavailableReason === 'no_reading_yet');
+          const lastSuccess = p.lastSuccessfulTransactionAt
+            ? new Date(p.lastSuccessfulTransactionAt).toLocaleString()
+            : 'No transactions yet';
+
+          let balanceDisplay = '—';
+          if (p.balance && p.balance.kobo != null) {
+            balanceDisplay = `₦${(p.balance.kobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`;
+          } else if (p.balanceUnavailableReason === 'no_balance_endpoint') {
+            balanceDisplay = 'Third-party API';
+          } else if (p.balanceUnavailableReason === 'no_reading_yet') {
+            balanceDisplay = 'Connecting...';
+          }
+
+          return `
+            <div class="provider-card">
+              <div class="provider-card-top">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div class="kpi-icon-wrap" style="background:var(--primary-subtle); color:var(--primary);">
+                    <span class="material-symbols-outlined">${meta.icon}</span>
+                  </div>
+                  <div>
+                    <div class="provider-name">${meta.name}</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted);">${meta.type}</div>
+                  </div>
+                </div>
+                <span class="badge ${p.enabled ? 'badge-success' : 'badge-neutral'}">
+                  ${p.enabled ? 'ENABLED' : 'DISABLED'}
+                </span>
+              </div>
+
+              <div style="background:var(--bg-app); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
+                <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                  <span style="font-size:0.78rem; color:var(--text-dim); text-transform:uppercase;">Float / Cached Balance</span>
+                  <span style="font-family:var(--font-heading); font-weight:700; color:var(--navy); font-size:1.05rem;">${balanceDisplay}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
+                  <span style="color:var(--text-dim);">Last success:</span>
+                  <span style="color:var(--text-muted);">${lastSuccess}</span>
+                </div>
+              </div>
+
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:0.78rem; color:var(--text-dim);">Mode: <strong style="color:var(--navy); text-transform:uppercase;">${p.mode || 'LIVE'}</strong></span>
+                <span class="badge ${isOperational ? 'badge-info' : 'badge-warning'}">
+                  ${isOperational ? 'OPERATIONAL' : 'DEGRADED'}
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  // ==========================================
+  // 7. Runtime Settings Registry
+  // ==========================================
   function normalizeSettingsData(data) {
     if (Array.isArray(data)) return data;
     if (data && Array.isArray(data.groups)) {
@@ -1037,74 +1135,203 @@
     if (data && Array.isArray(data.settings)) {
       return data.settings;
     }
-    return MOCK_DATA.settings;
+    return [];
   }
 
+  async function renderSettings(container) {
+    const res = await apiRequest('/admin/settings');
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderSettings(container));
+      return;
+    }
+
+    const groups = (res.data && res.data.groups) || [];
+    cachedSettings = normalizeSettingsData(res.data);
+
+    container.innerHTML = `
+      <div class="toolbar">
+        <div class="search-box">
+          <span class="material-symbols-outlined">search</span>
+          <input type="text" id="settings-search" placeholder="Search settings key, description..." oninput="window.filterSettings()" />
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 24px;">
+        ${groups.map(g => `
+          <div class="table-card settings-group-card">
+            <div style="padding: 16px 20px; background: #FAFBFA; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="font-family: var(--font-heading); font-size: 1.05rem; color: var(--navy);">${g.label || g.id}</h3>
+              <span class="badge badge-neutral">${(g.settings || []).length} settings</span>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Key / Description</th>
+                  <th>Current Value</th>
+                  <th>Default</th>
+                  <th>Risk Level</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(g.settings || []).map(s => `
+                  <tr class="setting-row" data-search="${s.key + ' ' + (s.description || '')}">
+                    <td>
+                      <div><code>${s.key}</code></div>
+                      <div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px;">${s.description || '—'}</div>
+                    </td>
+                    <td><strong style="color:var(--navy); font-family:monospace; font-size:0.9rem;">${formatSettingValue(s.value)}</strong></td>
+                    <td style="color:var(--text-dim); font-size:0.8rem; font-family:monospace;">${formatSettingValue(s.default)}</td>
+                    <td>
+                      <span class="badge ${s.risk === 'high' ? 'badge-danger' : 'badge-neutral'}">
+                        ${s.risk || 'low'}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn-secondary" style="padding: 5px 12px; font-size: 0.8rem;" onclick="window.openEditSetting('${s.key}')">
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function formatSettingValue(val) {
+    if (val === null || val === undefined) return 'null';
+    if (typeof val === 'boolean') return val ? 'true' : 'false';
+    if (Array.isArray(val)) return val.join(', ') || '[]';
+    return String(val);
+  }
+
+  window.filterSettings = function () {
+    const q = document.getElementById('settings-search')?.value.toLowerCase().trim() || '';
+    const rows = document.querySelectorAll('.setting-row');
+    rows.forEach(r => {
+      const text = (r.getAttribute('data-search') || '').toLowerCase();
+      r.style.display = !q || text.includes(q) ? '' : 'none';
+    });
+  };
+
+  window.openEditSetting = function (key) {
+    const item = cachedSettings.find(x => x.key === key) || { key, value: '', risk: 'low', description: '' };
+
+    modalTitle.textContent = `Modify Setting: ${item.key}`;
+    modalBody.innerHTML = `
+      ${item.risk === 'high' ? `
+        <div class="confirm-warning-box">
+          <span class="material-symbols-outlined">warning</span>
+          <div>
+            <strong>High-Risk Runtime Setting:</strong>
+            <p>Modifying this setting directly impacts financial rules or feature availability across the live platform.</p>
+          </div>
+        </div>
+      ` : ''}
+
+      <div class="form-field">
+        <label>Current Value</label>
+        <input type="text" id="setting-new-val" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);" value="${item.value !== null && item.value !== undefined ? item.value : ''}" />
+      </div>
+
+      <div class="form-field">
+        <label>Reason for Modification (Mandatory for High-Risk)</label>
+        <textarea id="setting-reason" class="reason-textarea" placeholder="State operational reason..."></textarea>
+      </div>
+    `;
+
+    modalFooter.innerHTML = `
+      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto;" onclick="window.saveSetting('${item.key}', '${item.risk}')">
+        Save Setting
+      </button>
+    `;
+
+    modalBackdrop.classList.add('active');
+  };
+
+  window.saveSetting = async function (key, risk) {
+    let newVal = document.getElementById('setting-new-val')?.value.trim();
+    const reason = document.getElementById('setting-reason')?.value.trim();
+
+    if (risk === 'high' && (!reason || reason.length < 8)) {
+      alert('High-risk settings modifications require a justification of at least 8 characters.');
+      return;
+    }
+
+    // Auto-parse boolean if string is true/false
+    if (newVal === 'true') newVal = true;
+    else if (newVal === 'false') newVal = false;
+    else if (/^\d+$/.test(newVal)) newVal = parseInt(newVal, 10);
+
+    const res = await apiRequest(`/admin/settings/${key}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value: newVal, reason, confirm: true })
+    });
+
+    if (!res.success) {
+      alert(`Save failed: ${res.error}`);
+      return;
+    }
+
+    closeModal();
+    showToast(`Setting ${key} updated successfully.`);
+    renderView('settings');
+  };
+
+  // ==========================================
+  // 8. Cashback Rates & Manager Screen
+  // ==========================================
   async function renderCashback(container) {
     const res = await apiRequest('/admin/settings');
-    const settings = normalizeSettingsData(res.data);
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderCashback(container));
+      return;
+    }
 
+    cachedSettings = normalizeSettingsData(res.data);
     const getVal = (key, fallback = '') => {
-      const found = settings.find(s => s.key === key);
-      return found ? String(found.value) : fallback;
+      const found = cachedSettings.find(s => s.key === key);
+      return found && found.value !== null && found.value !== undefined ? found.value : fallback;
     };
 
-    const isEnabled = getVal('cashback.enabled', 'true') === 'true';
-    const earnRatesRaw = getVal('cashback.earnRatesBps', 'AIRTIME:100,DATA:100,ELECTRICITY:50,CABLE_TV:50,EXAM_PIN:100,JAMB:100,BETTING_FUNDING:50,TELECOM_SMILE:50,TELECOM_SPECTRANET:50,EDUCATION_DATA:50,BULK_SMS:50,RECHARGE_CARD_PRINT:50,VEHICLE_INSURANCE:50,COUPON:50');
-    const spendTypesRaw = getVal('cashback.spendTypes', 'AIRTIME,DATA,ELECTRICITY,CABLE_TV,EXAM_PIN,JAMB,BETTING_FUNDING,TELECOM_SMILE,TELECOM_SPECTRANET,EDUCATION_DATA,BULK_SMS,RECHARGE_CARD_PRINT,VEHICLE_INSURANCE,COUPON');
+    const isEnabled = Boolean(getVal('cashback.enabled', false));
+    const earnRatesRaw = getVal('cashback.earnRatesBps', []);
+    const spendTypesRaw = getVal('cashback.spendTypes', ['AIRTIME', 'DATA']);
     const maxEarnTxKobo = parseInt(getVal('cashback.maxEarnPerTxKobo', '50000'), 10) || 50000;
     const maxEarnMonthKobo = parseInt(getVal('cashback.maxEarnPerUserPerMonthKobo', '500000'), 10) || 500000;
     const dailyBudgetKeyKobo = parseInt(getVal('cashback.platformDailyBudgetKobo', '100000000'), 10) || 100000000;
 
-    // Parse existing rates
+    // Parse existing rates array ['AIRTIME:100', ...]
     const earnRateMap = {};
-    earnRatesRaw.split(',').forEach(item => {
-      const parts = item.trim().split(':');
+    const rateList = Array.isArray(earnRatesRaw) ? earnRatesRaw : String(earnRatesRaw).split(',');
+    rateList.forEach(item => {
+      const parts = String(item).trim().split(':');
       if (parts.length === 2) {
         earnRateMap[parts[0].toUpperCase()] = parseInt(parts[1], 10) || 0;
       }
     });
 
-    // Parse spend types
-    const spendSet = new Set(spendTypesRaw.split(',').map(s => s.trim().toUpperCase()));
+    const spendSet = new Set(
+      (Array.isArray(spendTypesRaw) ? spendTypesRaw : String(spendTypesRaw).split(','))
+        .map(x => String(x).trim().toUpperCase())
+    );
 
     container.innerHTML = `
-      <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 24px;">
-        <div class="kpi-card">
-          <span class="kpi-label">Master Cashback Switch</span>
-          <div class="kpi-val" style="color:${isEnabled ? 'var(--accent-lime)' : 'var(--danger)'};">
-            ${isEnabled ? 'ACTIVE' : 'DISABLED'}
-          </div>
-          <div class="kpi-sub">Controls platform-wide earning & spending</div>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Active Earning Services</span>
-          <div class="kpi-val">${Object.keys(earnRateMap).filter(k => earnRateMap[k] > 0).length} / ${CASHBACK_SERVICES.length}</div>
-          <div class="kpi-sub">Services earning cashback on debit</div>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Active Spend Services</span>
-          <div class="kpi-val">${spendSet.size} / ${CASHBACK_SERVICES.length}</div>
-          <div class="kpi-sub">Services accepting cashback payment</div>
-        </div>
-        <div class="kpi-card">
-          <span class="kpi-label">Platform Daily Budget</span>
-          <div class="kpi-val" style="color:var(--accent-lime);">₦${(dailyBudgetKeyKobo / 100).toLocaleString('en-NG')}</div>
-          <div class="kpi-sub">Global ceiling for all user rewards</div>
-        </div>
-      </div>
-
-      <!-- Service-by-Service Rates Card -->
       <div class="table-card" style="margin-bottom: 24px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
+        <div style="padding: 20px; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:var(--navy);">Service Cashback Rates & Spend Rules</h3>
+            <h3 style="font-family:var(--font-heading); font-size:1.15rem; color:var(--navy);">Service Cashback Rates & Spend Rules</h3>
             <p style="font-size:0.8rem; color:var(--text-dim); margin-top:2px;">
-              Configure basis points per service (100 bps = 1.00%) and toggle which services allow redemption.
+              Configure basis points per service (100 bps = 1.00%) and toggle which services allow cashback redemption.
             </p>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
-            <label style="font-size:0.85rem; color:var(--text-muted); cursor:pointer;">
+            <label style="font-size:0.88rem; color:var(--navy); font-weight:600; cursor:pointer;">
               <input type="checkbox" id="cb-master-switch" ${isEnabled ? 'checked' : ''} style="margin-right:6px;" />
               Enable Cashback System
             </label>
@@ -1155,22 +1382,22 @@
                         max="20"
                         id="cb-rate-pct-${svc.type}"
                         value="${currentPct}"
-                        style="width:80px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px 8px; color:var(--text-main); font-weight:600; text-align:right;"
+                        style="width:80px; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:6px 8px; color:var(--text-main); font-weight:600; text-align:right;"
                         oninput="window.updateRateBpsFromPct('${svc.type}', this.value)"
                       />
                       <span style="font-size:0.85rem; color:var(--text-dim);">%</span>
                     </div>
                   </td>
                   <td>
-                    <span id="cb-rate-bps-${svc.type}" style="font-family:monospace; font-weight:600; color:var(--accent-lime);">
+                    <span id="cb-rate-bps-${svc.type}" style="font-family:monospace; font-weight:600; color:var(--navy);">
                       ${currentBps} bps
                     </span>
                   </td>
                   <td>
                     <label style="cursor:pointer; display:flex; align-items:center; gap:6px;">
                       <input type="checkbox" id="cb-spend-active-${svc.type}" ${isSpending ? 'checked' : ''} />
-                      <span class="badge ${isSpending ? 'badge-info' : 'badge-neutral'}">
-                        ${isSpending ? 'Redeemable' : 'Disabled'}
+                      <span class="badge ${isSpending ? 'badge-success' : 'badge-neutral'}">
+                        ${isSpending ? 'Allowed' : 'Disabled'}
                       </span>
                     </label>
                   </td>
@@ -1181,74 +1408,67 @@
         </table>
       </div>
 
-      <!-- Financial Guardrails & Caps Card -->
-      <div class="table-card" style="margin-bottom: 24px;">
-        <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:#FFFFFF; margin-bottom: 4px;">Financial Guardrails & Risk Caps</h3>
-        <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom: 18px;">
-          Mandatory safety ceilings preventing unbounded liabilities or fraud exploits.
-        </p>
-
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-          <div class="form-field">
-            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Max Earn Per Transaction (₦)</label>
+      <!-- Financial Caps Card -->
+      <div class="table-card" style="padding: 24px; margin-bottom: 24px;">
+        <h3 style="font-family:var(--font-heading); font-size:1.15rem; color:var(--navy); margin-bottom: 4px;">Financial Guardrails & Risk Caps</h3>
+        <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom: 20px;">Safety ceilings required when cashback is enabled.</p>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">Max Earn per Purchase (₦)</label>
             <input
               type="number"
               id="cb-cap-tx"
               value="${maxEarnTxKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
-            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Ceiling on cashback reward for one purchase</span>
           </div>
-
-          <div class="form-field">
-            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Max Earn Per User / Month (₦)</label>
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">Monthly User Cap (₦)</label>
             <input
               type="number"
               id="cb-cap-month"
               value="${maxEarnMonthKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
-            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Monthly user ceiling (calendar month in Lagos)</span>
           </div>
-
-          <div class="form-field">
-            <label style="font-size:0.82rem; color:var(--text-muted); margin-bottom:6px; display:block;">Platform Daily Budget (₦)</label>
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">Platform Daily Budget (₦)</label>
             <input
               type="number"
               id="cb-cap-budget"
               value="${dailyBudgetKeyKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
-            <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Platform-wide daily reward budget</span>
           </div>
         </div>
       </div>
 
-      <!-- Action Footer -->
-      <div style="display:flex; justify-content:flex-end; gap:12px;">
-        <button class="btn-primary" style="padding:12px 28px; font-size:0.95rem;" onclick="window.saveCashbackManagerConfig()">
-          <span class="material-symbols-outlined" style="font-size:1.1rem; vertical-align:middle; margin-right:4px;">save</span>
-          Save Cashback Rules & Rates
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn-primary" style="width:auto; padding:12px 28px;" onclick="window.saveCashbackManagerConfig()">
+          <span class="material-symbols-outlined">save</span>
+          <span>Save Cashback Configuration</span>
         </button>
       </div>
     `;
   }
 
-  window.toggleServiceEarn = function (type, active) {
+  window.toggleServiceEarn = function (type, isChecked) {
     const inputPct = document.getElementById(`cb-rate-pct-${type}`);
     const badge = document.getElementById(`cb-earn-badge-${type}`);
-    if (active) {
-      if (!inputPct.value || parseFloat(inputPct.value) <= 0) {
+    if (isChecked) {
+      if (inputPct && parseFloat(inputPct.value) <= 0) {
         inputPct.value = '1.00';
+        window.updateRateBpsFromPct(type, '1.00');
       }
-      window.updateRateBpsFromPct(type, inputPct.value);
       if (badge) {
         badge.className = 'badge badge-info';
         badge.textContent = 'Earning';
       }
     } else {
-      inputPct.value = '0.00';
-      window.updateRateBpsFromPct(type, '0.00');
+      if (inputPct) {
+        inputPct.value = '0.00';
+        window.updateRateBpsFromPct(type, '0.00');
+      }
       if (badge) {
         badge.className = 'badge badge-neutral';
         badge.textContent = 'Off';
@@ -1267,8 +1487,7 @@
 
   window.saveCashbackManagerConfig = async function () {
     const enabled = document.getElementById('cb-master-switch')?.checked ?? true;
-    
-    // Collect earn rates
+
     const earnItems = [];
     CASHBACK_SERVICES.forEach(svc => {
       const active = document.getElementById(`cb-earn-active-${svc.type}`)?.checked;
@@ -1278,18 +1497,14 @@
         earnItems.push(`${svc.type}:${bps}`);
       }
     });
-    const earnRatesBps = earnItems.join(',');
 
-    // Collect spend types
     const spendItems = [];
     CASHBACK_SERVICES.forEach(svc => {
       if (document.getElementById(`cb-spend-active-${svc.type}`)?.checked) {
         spendItems.push(svc.type);
       }
     });
-    const spendTypes = spendItems.length > 0 ? spendItems.join(',') : 'AIRTIME,DATA';
 
-    // Collect caps in kobo
     const maxTxNaira = parseFloat(document.getElementById('cb-cap-tx')?.value) || 500;
     const maxMonthNaira = parseFloat(document.getElementById('cb-cap-month')?.value) || 5000;
     const budgetDailyNaira = parseFloat(document.getElementById('cb-cap-budget')?.value) || 1000000;
@@ -1298,120 +1513,145 @@
     const maxEarnPerUserPerMonthKobo = Math.round(maxMonthNaira * 100);
     const platformDailyBudgetKobo = Math.round(budgetDailyNaira * 100);
 
-    const reason = prompt('Please enter an operational reason for this cashback update (min 10 characters):', 'Updated service cashback earn rates and spend policies');
-    if (!reason || reason.trim().length < 10) {
-      alert('Updating financial settings requires an operational audit reason of at least 10 characters.');
+    const reason = prompt('Operational justification for cashback modification (min 8 chars):', 'Updated production cashback earn rates and spend types');
+    if (!reason || reason.trim().length < 8) {
+      alert('Updating financial settings requires an operational audit reason of at least 8 characters.');
       return;
     }
 
-    const updates = [
-      { key: 'cashback.enabled', value: Boolean(enabled) },
-      { key: 'cashback.earnRatesBps', value: earnItems },
-      { key: 'cashback.spendTypes', value: spendItems.length > 0 ? spendItems : ['AIRTIME', 'DATA'] },
+    // Set caps first (required by validation before enabling)
+    const caps = [
       { key: 'cashback.maxEarnPerTxKobo', value: maxEarnPerTxKobo },
       { key: 'cashback.maxEarnPerUserPerMonthKobo', value: maxEarnPerUserPerMonthKobo },
       { key: 'cashback.platformDailyBudgetKobo', value: platformDailyBudgetKobo },
+      { key: 'cashback.earnRatesBps', value: earnItems },
+      { key: 'cashback.spendTypes', value: spendItems.length > 0 ? spendItems : ['AIRTIME', 'DATA'] },
+      { key: 'cashback.enabled', value: Boolean(enabled) },
     ];
 
-    for (const u of updates) {
-      await apiRequest(`/admin/settings/${u.key}`, {
+    for (const u of caps) {
+      const res = await apiRequest(`/admin/settings/${u.key}`, {
         method: 'PUT',
         body: JSON.stringify({ value: u.value, reason: reason.trim(), confirm: true })
       });
-
-      // Also update local mock data if in mock mode
-      const local = MOCK_DATA.settings.find(s => s.key === u.key);
-      if (local) local.value = u.value;
+      if (!res.success) {
+        alert(`Failed to save ${u.key}: ${res.error}`);
+        return;
+      }
     }
 
-    showToast('Cashback rules and rates saved successfully!');
+    showToast('Cashback rules and rates saved to production successfully!');
     renderView('cashback');
   };
 
-  // 6. Provider Health Screen
-  async function renderProviders(container) {
-    const res = await apiRequest('/admin/providers/health');
-    const providers = res.data || MOCK_DATA.providers;
+  // ==========================================
+  // 9. Audit Log Screen
+  // ==========================================
+  async function renderAuditLog(container) {
+    const res = await apiRequest('/admin/audit-log');
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderAuditLog(container));
+      return;
+    }
 
-    container.innerHTML = `
-      <div class="providers-grid">
-        ${providers.map(p => `
-          <div class="provider-card">
-            <div class="provider-card-top">
-              <div>
-                <div class="provider-name">${p.name}</div>
-                <div style="font-size:0.75rem; color:var(--text-muted);">${p.type}</div>
-              </div>
-              <span class="badge ${p.status === 'OPERATIONAL' ? 'badge-success' : 'badge-danger'}">${p.status}</span>
-            </div>
-
-            <div style="background:var(--bg-app); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
-              <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <span style="font-size:0.78rem; color:var(--text-dim); text-transform:uppercase;">Float / Cached Balance</span>
-                <span style="font-family:var(--font-heading); font-weight:700; color:var(--navy);">${p.cachedBalance}</span>
-              </div>
-              <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
-                <span style="color:var(--text-dim);">Last successful call:</span>
-                <span style="color:var(--text-muted);">${p.lastSuccess}</span>
-              </div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-size:0.78rem; color:var(--text-dim);">Mode: <strong style="color:var(--accent-lime);">${p.mode}</strong></span>
-              <button class="btn-secondary" style="padding:6px 12px; font-size:0.8rem;" onclick="window.refreshProvider('${p.name}')">
-                <span class="material-symbols-outlined" style="font-size:1rem;">refresh</span> Check Health
-              </button>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
-  window.refreshProvider = function (name) {
-    showToast(`Refreshed health metrics for ${name}`);
-  };
-
-  // 7. Settings Registry Screen
-  async function renderSettings(container) {
-    const res = await apiRequest('/admin/settings');
-    const settings = normalizeSettingsData(res.data);
+    const logs = (res.data && res.data.items) || [];
 
     container.innerHTML = `
       <div class="table-card">
         <table class="data-table">
           <thead>
             <tr>
-              <th>Setting Key</th>
-              <th>Group</th>
-              <th>Effective Value</th>
-              <th>Source</th>
-              <th>Default</th>
-              <th>Risk</th>
-              <th>Applies</th>
+              <th>Timestamp</th>
+              <th>Actor ID</th>
+              <th>Action</th>
+              <th>Target Entity</th>
+              <th>Context / Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${logs.length === 0 ? `
+              <tr>
+                <td colspan="5" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  No audit log entries recorded.
+                </td>
+              </tr>
+            ` : logs.map(a => `
+              <tr>
+                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(a.createdAt).toLocaleString()}</td>
+                <td><code>${a.actorId ? a.actorId.slice(0, 12) + '...' : 'system'}</code></td>
+                <td><span class="badge badge-info">${a.action}</span></td>
+                <td><code>${a.entity || ''} ${a.entityId ? '#' + a.entityId.slice(0, 8) : ''}</code></td>
+                <td style="color:var(--text-main); font-size:0.82rem;">${a.after?.reason || JSON.stringify(a.after || a.before || '—').slice(0, 80)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  // ==========================================
+  // 10. Virtual Cards & StroWallet Claims
+  // ==========================================
+  async function renderVirtualCards(container) {
+    const res = await apiRequest('/admin/strowallet-claims');
+    const claims = (res.data && res.data.items) || [];
+
+    container.innerHTML = `
+      <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
+        <div class="kpi-card">
+          <span class="kpi-label">Provider Integration</span>
+          <div class="kpi-val" style="color:var(--primary); font-size:1.6rem;">StroWallet Live</div>
+          <div class="kpi-sub">USD MasterCard Virtual Float</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Pending Card Claims</span>
+          <div class="kpi-val">${claims.length}</div>
+          <div class="kpi-sub">Claims awaiting reverification</div>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Issuance Policy</span>
+          <div class="kpi-val" style="font-size:1.4rem;">Tier 1+ Verified</div>
+          <div class="kpi-sub">Mandatory KYC & transaction PIN protection</div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div style="padding: 16px 20px; background: #FAFBFA; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="font-family: var(--font-heading); font-size: 1.05rem; color: var(--navy);">StroWallet Virtual Card Claims & Disputes</h3>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Claim ID</th>
+              <th>Customer</th>
+              <th>Card Reference</th>
+              <th>Disputed Amount</th>
+              <th>Status</th>
+              <th>Timestamp</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            ${settings.map(s => `
+            ${claims.length === 0 ? `
               <tr>
-                <td>
-                  <strong><code>${s.key}</code></strong>
-                  <div style="font-size:0.75rem; color:var(--text-dim);">${s.description}</div>
+                <td colspan="7" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  <span class="material-symbols-outlined" style="font-size: 2.2rem; display: block; margin-bottom: 8px; color: var(--primary);">credit_card</span>
+                  <strong style="color: var(--navy); font-size: 1rem;">No Active Card Claims</strong>
+                  <p style="font-size: 0.85rem; margin-top: 4px;">All virtual card issuance and funding transactions are operating normally.</p>
                 </td>
-                <td><span class="badge badge-neutral">${s.group}</span></td>
-                <td><strong style="color:var(--accent-lime);">${s.value}</strong></td>
-                <td><span class="badge badge-info">${s.source}</span></td>
-                <td style="color:var(--text-dim);">${s.default}</td>
+              </tr>
+            ` : claims.map(c => `
+              <tr>
+                <td><code>${c.id.slice(0, 8)}...</code></td>
+                <td>${c.userEmailMasked || '—'}</td>
+                <td><code>${c.cardReference || '****'}</code></td>
+                <td><strong>$${(c.amountUsd || 0).toFixed(2)}</strong></td>
+                <td><span class="badge badge-warning">${c.status}</span></td>
+                <td style="color:var(--text-dim);">${new Date(c.createdAt).toLocaleDateString()}</td>
                 <td>
-                  <span class="badge ${s.risk === 'high' ? 'badge-danger' : s.risk === 'medium' ? 'badge-warning' : 'badge-neutral'}">
-                    ${s.risk}
-                  </span>
-                </td>
-                <td><span style="font-size:0.8rem;">${s.applies}</span></td>
-                <td>
-                  <button class="btn-secondary" style="padding:6px 12px; font-size:0.8rem;" onclick="window.openEditSetting('${s.key}')">
-                    Modify
+                  <button class="btn-primary" style="padding: 5px 12px; font-size: 0.8rem;" onclick="window.reverifyClaim('${c.id}')">
+                    Reverify
                   </button>
                 </td>
               </tr>
@@ -1422,276 +1662,48 @@
     `;
   }
 
-  window.openEditSetting = function (key) {
-    const item = MOCK_DATA.settings.find(x => x.key === key) || { key, value: '', risk: 'low', description: '' };
-
-    modalTitle.textContent = `Modify Setting: ${item.key}`;
-    modalBody.innerHTML = `
-      ${item.risk === 'high' ? `
-        <div class="confirm-warning-box">
-          <span class="material-symbols-outlined">warning</span>
-          <div>
-            <strong>High-Risk Runtime Setting:</strong>
-            <p>Modifying this setting directly impacts financial rules or feature availability across the live platform.</p>
-          </div>
-        </div>
-      ` : ''}
-
-      <div class="form-field">
-        <label>Current Value</label>
-        <input type="text" id="setting-new-val" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);" value="${item.value}" />
-      </div>
-
-      <div class="form-field">
-        <label>Reason for Modification (Mandatory for High-Risk)</label>
-        <textarea id="setting-reason" class="reason-textarea" placeholder="State operational reason..."></textarea>
-      </div>
-    `;
-
-    modalFooter.innerHTML = `
-      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
-      <button class="btn-primary" style="width:auto;" onclick="window.saveSetting('${item.key}', '${item.risk}')">
-        Save Setting
-      </button>
-    `;
-
-    modalBackdrop.classList.add('active');
-  };
-
-  window.saveSetting = async function (key, risk) {
-    const newVal = document.getElementById('setting-new-val')?.value.trim();
-    const reason = document.getElementById('setting-reason')?.value.trim();
-
-    if (risk === 'high' && (!reason || reason.length < 10)) {
-      alert('High-risk settings modifications require a justification of at least 10 characters.');
-      return;
-    }
-
-    await apiRequest(`/admin/settings/${key}`, {
-      method: 'PUT',
-      body: JSON.stringify({ value: newVal, reason, confirm: true })
-    });
-
-    closeModal();
-    showToast(`Setting ${key} updated.`);
-    renderView('settings');
-  };
-
-  // 8. Audit Log Screen
-  async function renderAuditLog(container) {
-    const res = await apiRequest('/admin/audit-log');
-    const logs = res.data || MOCK_DATA.auditLogs;
-
-    container.innerHTML = `
-      <div class="table-card">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Timestamp</th>
-              <th>Actor</th>
-              <th>Action</th>
-              <th>Target Entity</th>
-              <th>Reason / Justification</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${logs.map(a => `
-              <tr>
-                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(a.timestamp).toLocaleString()}</td>
-                <td><strong>${a.actor}</strong></td>
-                <td><span class="badge badge-info">${a.action}</span></td>
-                <td><code>${a.entity}</code></td>
-                <td style="color:var(--text-main);">${a.reason || '—'}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+  // Helper UI
+  function renderErrorAlert(msg, retryFn) {
+    return `
+      <div style="padding: 40px; text-align: center; background: #FFFFFF; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+        <span class="material-symbols-outlined" style="font-size: 2.5rem; color: var(--danger); margin-bottom: 12px; display: block;">error</span>
+        <h3 style="font-family: var(--font-heading); color: var(--navy); margin-bottom: 6px;">Failed to Load Operational Data</h3>
+        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px;">${msg || 'Backend API unreachable or request failed.'}</p>
+        <button class="btn-primary" style="display: inline-flex; width: auto; padding: 10px 24px;" onclick="window.retryCurrentView()">
+          <span class="material-symbols-outlined">refresh</span>
+          <span>Retry</span>
+        </button>
       </div>
     `;
   }
 
-  // 9. Virtual Cards Screen (StroWallet USD Cards)
-  async function renderVirtualCards(container) {
-    const res = await apiRequest('/admin/virtual-cards');
-    const cards = res.data || MOCK_DATA.virtualCards || [];
+  window.retryCurrentView = () => renderView(activeTab);
 
-    const totalCards = cards.length;
-    const activeCards = cards.filter(c => c.status === 'ACTIVE').length;
-    const frozenCards = cards.filter(c => c.status === 'FROZEN').length;
-    const totalFloatUsd = cards.reduce((acc, c) => acc + (c.balanceUsd || 0), 0);
+  window.closeDrawer = () => drawerBackdrop.classList.remove('active');
+  window.closeModal = () => modalBackdrop.classList.remove('active');
 
-    container.innerHTML = `
-      <div class="metrics-grid" style="margin-bottom: 24px;">
-        <div class="metric-card">
-          <div class="metric-title">Total Virtual Cards</div>
-          <div class="metric-value">${totalCards}</div>
-          <div class="metric-sub" style="color:var(--text-dim);">Issued USD Mastercards</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-title">Active Cards</div>
-          <div class="metric-value" style="color:var(--success);">${activeCards}</div>
-          <div class="metric-sub" style="color:var(--text-dim);">Ready for international spend</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-title">Frozen Cards</div>
-          <div class="metric-value" style="color:var(--warning);">${frozenCards}</div>
-          <div class="metric-sub" style="color:var(--text-dim);">Temporarily locked</div>
-        </div>
-        <div class="metric-card">
-          <div class="metric-title">Total Float (USD)</div>
-          <div class="metric-value" style="color:var(--accent-lime);">$${totalFloatUsd.toFixed(2)}</div>
-          <div class="metric-sub" style="color:var(--text-dim);">StroWallet cardholder float</div>
-        </div>
-      </div>
-
-      <div class="toolbar">
-        <div class="search-box">
-          <span class="material-symbols-outlined">search</span>
-          <input type="text" id="cards-search" placeholder="Search by user, card ID, last 4..." />
-        </div>
-        <div class="filters-group">
-          <select class="filter-select" id="cards-status-filter">
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="FROZEN">Frozen</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="table-card">
-        <table class="data-table" id="virtual-cards-table">
-          <thead>
-            <tr>
-              <th>Card ID</th>
-              <th>Cardholder</th>
-              <th>Card Details</th>
-              <th>Balance</th>
-              <th>Created</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${cards.map(c => `
-              <tr data-card-id="${c.id}" data-status="${c.status}" data-search="${(c.userName + ' ' + c.id + ' ' + c.last4).toLowerCase()}">
-                <td><code>${c.id}</code></td>
-                <td>
-                  <strong>${c.userName}</strong>
-                  <div style="font-size:0.75rem; color:var(--text-dim);">${c.userId}</div>
-                </td>
-                <td>
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span class="material-symbols-outlined" style="font-size:1.1rem; color:var(--accent-lime);">credit_card</span>
-                    <span>•••• ${c.last4}</span>
-                  </div>
-                  <div style="font-size:0.75rem; color:var(--text-muted);">${c.brand}</div>
-                </td>
-                <td>
-                  <strong style="color:var(--accent-lime);">$${(c.balanceUsd || 0).toFixed(2)}</strong>
-                  <div style="font-size:0.75rem; color:var(--text-dim);">₦${((c.balanceKobo || 0) / 100).toLocaleString('en-NG')}</div>
-                </td>
-                <td style="color:var(--text-muted); font-size:0.8rem;">${c.createdAt || '—'}</td>
-                <td>
-                  <span class="badge ${c.status === 'ACTIVE' ? 'badge-success' : 'badge-warning'}">${c.status}</span>
-                </td>
-                <td>
-                  ${c.status === 'ACTIVE' ? `
-                    <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem; border-color: rgba(239, 68, 68, 0.4); color: var(--danger);" onclick="window.adminFreezeCard('${c.id}')">
-                      Freeze
-                    </button>
-                  ` : `
-                    <button class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="window.adminUnfreezeCard('${c.id}')">
-                      Unfreeze
-                    </button>
-                  `}
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    // Search and filter handlers
-    const searchInput = document.getElementById('cards-search');
-    const statusFilter = document.getElementById('cards-status-filter');
-    const tableRows = container.querySelectorAll('#virtual-cards-table tbody tr');
-
-    function filterTable() {
-      const q = (searchInput?.value || '').toLowerCase().trim();
-      const st = statusFilter?.value || 'ALL';
-
-      tableRows.forEach(row => {
-        const textMatch = !q || row.getAttribute('data-search').includes(q);
-        const statusMatch = st === 'ALL' || row.getAttribute('data-status') === st;
-        row.style.display = (textMatch && statusMatch) ? '' : 'none';
-      });
-    }
-
-    if (searchInput) searchInput.addEventListener('input', filterTable);
-    if (statusFilter) statusFilter.addEventListener('change', filterTable);
-  }
-
-  window.adminFreezeCard = async function (cardId) {
-    if (!confirm(`Are you sure you want to freeze virtual card ${cardId}? The user will be unable to make international payments until unfrozen.`)) {
-      return;
-    }
-    await apiRequest(`/admin/virtual-cards/${cardId}/freeze`, { method: 'POST' });
-    const card = MOCK_DATA.virtualCards.find(c => c.id === cardId);
-    if (card) card.status = 'FROZEN';
-    showToast(`Virtual Card ${cardId} has been FROZEN.`);
-    renderView('virtual-cards');
-  };
-
-  window.adminUnfreezeCard = async function (cardId) {
-    if (!confirm(`Unfreeze virtual card ${cardId}? This will re-enable card transactions.`)) {
-      return;
-    }
-    await apiRequest(`/admin/virtual-cards/${cardId}/unfreeze`, { method: 'POST' });
-    const card = MOCK_DATA.virtualCards.find(c => c.id === cardId);
-    if (card) card.status = 'ACTIVE';
-    showToast(`Virtual Card ${cardId} has been reactivated (ACTIVE).`);
-    renderView('virtual-cards');
-  };
-
-  // ==========================================
-  // Global Modal & Drawer Handlers
-  // ==========================================
-  window.closeModal = function () {
-    if (modalBackdrop) modalBackdrop.classList.remove('active');
-  };
-
-  window.closeDrawer = function () {
-    if (drawerBackdrop) drawerBackdrop.classList.remove('active');
-  };
-
-  if (modalBackdrop) {
-    modalBackdrop.addEventListener('click', (e) => {
-      if (e.target === modalBackdrop) closeModal();
-    });
-  }
-
-  if (drawerBackdrop) {
-    drawerBackdrop.addEventListener('click', (e) => {
-      if (e.target === drawerBackdrop) closeDrawer();
-    });
-  }
-
-  // Toast Notifications
   function showToast(msg) {
-    if (!toastContainer) return;
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.innerHTML = `
-      <span class="material-symbols-outlined" style="color:var(--accent-lime);">check_circle</span>
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = `
+      <span class="material-symbols-outlined" style="color:var(--primary);">check_circle</span>
       <span>${msg}</span>
     `;
-    toastContainer.appendChild(toast);
+    toastContainer.appendChild(el);
     setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.3s ease';
-      setTimeout(() => toast.remove(), 300);
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(10px)';
+      el.style.transition = 'all 0.3s ease';
+      setTimeout(() => el.remove(), 300);
     }, 3500);
   }
+
+  // Backdrop click dismiss
+  drawerBackdrop.addEventListener('click', (e) => {
+    if (e.target === drawerBackdrop) closeDrawer();
+  });
+  modalBackdrop.addEventListener('click', (e) => {
+    if (e.target === modalBackdrop) closeModal();
+  });
 
 })();
