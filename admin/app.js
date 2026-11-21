@@ -225,19 +225,32 @@
       // Check success
       if (res.ok && (body.accessToken || body.token || (body.data && body.data.accessToken))) {
         const token = body.accessToken || body.token || body.data.accessToken;
-        const user = body.user || (body.data && body.data.user) || { email, role: 'ADMIN', name: 'Admin User' };
+        const rawUser = body.user || (body.data && body.data.user) || {};
 
-        // Ensure role is ADMIN
-        if (user.role !== 'ADMIN') {
+        // Verify with backend that this token has ADMIN role
+        const verifyRes = await fetch(`${API_BASE}/admin/overview`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => null);
+
+        if (verifyRes && verifyRes.status === 403) {
           showLoginAlert('Access Denied: This account is not an authorized JemaBill administrator.');
           loginBtn.disabled = false;
           loginBtn.querySelector('span:last-child').textContent = 'Sign In to Panel';
           return;
         }
 
+        const adminName = (rawUser.firstName && rawUser.lastName)
+          ? `${rawUser.firstName} ${rawUser.lastName}`
+          : (rawUser.firstName || 'Operations Admin');
+
         // Store token in memory only
         adminToken = token;
-        currentAdmin = user;
+        currentAdmin = {
+          ...rawUser,
+          email: rawUser.email || email,
+          role: 'ADMIN',
+          name: adminName
+        };
         initSession();
         return;
       }
@@ -250,7 +263,7 @@
         return;
       }
 
-      const msg = body.message || body.error || 'Invalid administrator credentials.';
+      const msg = body.message || (body.error && body.error.message) || body.error || 'Invalid administrator credentials.';
       showLoginAlert(Array.isArray(msg) ? msg[0] : msg);
     } catch {
       // In offline / preview test
@@ -558,25 +571,25 @@
           <div class="section-label">Liveness & Biometric Verification Frames</div>
           <div class="selfies-grid">
             <div class="selfie-frame-card">
-              <div style="background:#172B45; height:100%; display:flex; align-items:center; justify-content:center; color:#94A3B8;">
+              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
                 <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
               </div>
               <span class="selfie-frame-badge">Frame 1: Center</span>
             </div>
             <div class="selfie-frame-card">
-              <div style="background:#172B45; height:100%; display:flex; align-items:center; justify-content:center; color:#94A3B8;">
+              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
                 <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
               </div>
               <span class="selfie-frame-badge">Frame 2: Turn Left</span>
             </div>
             <div class="selfie-frame-card">
-              <div style="background:#172B45; height:100%; display:flex; align-items:center; justify-content:center; color:#94A3B8;">
+              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
                 <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
               </div>
               <span class="selfie-frame-badge">Frame 3: Blink</span>
             </div>
             <div class="selfie-frame-card">
-              <div style="background:#172B45; height:100%; display:flex; align-items:center; justify-content:center; color:#94A3B8;">
+              <div style="background:var(--bg-app); height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-dim);">
                 <span class="material-symbols-outlined" style="font-size:2.5rem;">face</span>
               </div>
               <span class="selfie-frame-badge">Frame 4: Smile</span>
@@ -1085,7 +1098,7 @@
       <div class="table-card" style="margin-bottom: 24px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 16px;">
           <div>
-            <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:#FFFFFF;">Service Cashback Rates & Spend Rules</h3>
+            <h3 style="font-family:var(--font-heading); font-size:1.1rem; color:var(--navy);">Service Cashback Rates & Spend Rules</h3>
             <p style="font-size:0.8rem; color:var(--text-dim); margin-top:2px;">
               Configure basis points per service (100 bps = 1.00%) and toggle which services allow redemption.
             </p>
@@ -1142,7 +1155,7 @@
                         max="20"
                         id="cb-rate-pct-${svc.type}"
                         value="${currentPct}"
-                        style="width:80px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px 8px; color:#FFFFFF; font-weight:600; text-align:right;"
+                        style="width:80px; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:6px 8px; color:var(--text-main); font-weight:600; text-align:right;"
                         oninput="window.updateRateBpsFromPct('${svc.type}', this.value)"
                       />
                       <span style="font-size:0.85rem; color:var(--text-dim);">%</span>
@@ -1182,7 +1195,7 @@
               type="number"
               id="cb-cap-tx"
               value="${maxEarnTxKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
             <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Ceiling on cashback reward for one purchase</span>
           </div>
@@ -1193,7 +1206,7 @@
               type="number"
               id="cb-cap-month"
               value="${maxEarnMonthKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
             <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Monthly user ceiling (calendar month in Lagos)</span>
           </div>
@@ -1204,7 +1217,7 @@
               type="number"
               id="cb-cap-budget"
               value="${dailyBudgetKeyKobo / 100}"
-              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;"
+              style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
             />
             <span style="font-size:0.75rem; color:var(--text-dim); margin-top:4px; display:block;">Platform-wide daily reward budget</span>
           </div>
@@ -1335,7 +1348,7 @@
             <div style="background:var(--bg-app); padding:14px; border-radius:var(--radius-sm); border:1px solid var(--border-color);">
               <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                 <span style="font-size:0.78rem; color:var(--text-dim); text-transform:uppercase;">Float / Cached Balance</span>
-                <span style="font-family:var(--font-heading); font-weight:700; color:#FFFFFF;">${p.cachedBalance}</span>
+                <span style="font-family:var(--font-heading); font-weight:700; color:var(--navy);">${p.cachedBalance}</span>
               </div>
               <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
                 <span style="color:var(--text-dim);">Last successful call:</span>
@@ -1426,7 +1439,7 @@
 
       <div class="form-field">
         <label>Current Value</label>
-        <input type="text" id="setting-new-val" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:#FFFFFF;" value="${item.value}" />
+        <input type="text" id="setting-new-val" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);" value="${item.value}" />
       </div>
 
       <div class="form-field">
