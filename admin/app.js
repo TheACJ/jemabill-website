@@ -294,6 +294,9 @@
       case 'settings':
         await renderSettings(container);
         break;
+      case 'banners':
+        await renderBanners(container);
+        break;
       case 'audit':
         await renderAuditLog(container);
         break;
@@ -1661,6 +1664,633 @@
       </div>
     `;
   }
+
+  // ==========================================
+  // 11. Promotional Banners Screen
+  // ==========================================
+  let cachedBanners = [];
+  let previewBannerIdx = 0;
+  let bannerTimer = null;
+
+  async function renderBanners(container) {
+    clearInterval(bannerTimer);
+    const res = await apiRequest('/admin/banners');
+    if (!res.success) {
+      container.innerHTML = renderErrorAlert(res.error, () => renderBanners(container));
+      return;
+    }
+
+    cachedBanners = Array.isArray(res.data) ? res.data : [];
+    const activeBanners = cachedBanners.filter(b => b.isActive);
+    if (activeBanners.length === 0 && cachedBanners.length > 0) {
+      activeBanners.push(cachedBanners[0]);
+    }
+
+    // Auto-advance preview every 4s
+    if (activeBanners.length > 1) {
+      bannerTimer = setInterval(() => {
+        previewBannerIdx = (previewBannerIdx + 1) % activeBanners.length;
+        updateLiveBannerPreview();
+      }, 4000);
+    }
+
+    const cur = activeBanners[previewBannerIdx] || {
+      tag: 'AIRTIME CASHBACK',
+      title: 'Get instant cashback rewards on your next airtime top-up!',
+      subtitle: 'Save more every time you recharge.',
+      buttonText: 'Buy now',
+      actionUrl: '/airtime',
+      bgColor: '#C5E76C',
+      textColor: '#000000',
+      tagColor: '#17324F',
+      imageUrl: 'gift-box'
+    };
+
+    container.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 24px; flex-wrap:wrap; gap:12px;">
+        <div>
+          <h2 style="font-family:var(--font-heading); font-size:1.35rem; color:var(--navy);">App Promotional Banners</h2>
+          <p style="font-size:0.85rem; color:var(--text-dim); margin-top:3px;">
+            Dynamic carousel banners displayed on the mobile app home screen below the services card.
+          </p>
+        </div>
+        <button class="btn-primary" style="width:auto; padding: 10px 20px;" onclick="window.openBannerModal(null)">
+          <span class="material-symbols-outlined">add_photo_alternate</span>
+          <span>Add New Banner</span>
+        </button>
+      </div>
+
+      <!-- Live App Carousel Preview Card -->
+      <div class="table-card" style="margin-bottom: 24px; padding: 22px; background: #FAFDF5; border: 1.5px dashed var(--accent-lime-dark);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 14px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="material-symbols-outlined" style="color:var(--primary); font-size:1.3rem;">smartphone</span>
+            <strong style="color:var(--navy); font-size:0.92rem;">Mobile App Live Preview (Auto-Rotating)</strong>
+          </div>
+          <span style="font-size:0.75rem; color:var(--text-dim); background:#FFFFFF; padding:4px 10px; border-radius:20px; border:1px solid var(--border-color);">
+            ${activeBanners.length} active banner${activeBanners.length === 1 ? '' : 's'}
+          </span>
+        </div>
+
+        <div style="max-width: 480px; margin: 0 auto;">
+          <div id="live-banner-preview-card" style="
+            background: ${cur.bgColor || '#C5E76C'};
+            color: ${cur.textColor || '#000000'};
+            border-radius: 16px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 130px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transition: all 0.4s ease;
+          ">
+            <div style="flex:1; padding-right:12px;">
+              <span id="prev-tag" style="
+                display:inline-block;
+                font-size:11px;
+                font-weight:700;
+                letter-spacing:0.04em;
+                color:${cur.tagColor || '#17324F'};
+                margin-bottom:4px;
+                text-transform:uppercase;
+              ">${cur.tag || 'PROMO'}</span>
+              <h4 id="prev-title" style="font-size:14px; font-weight:700; line-height:1.3; margin:0 0 4px 0; color:${cur.textColor || '#000000'};">
+                ${cur.title || 'Special Promotion'}
+              </h4>
+              <p id="prev-sub" style="font-size:11px; opacity:0.85; margin:0 0 10px 0; color:${cur.textColor || '#000000'};">
+                ${cur.subtitle || ''}
+              </p>
+              <div id="prev-btn" style="
+                display:inline-block;
+                background:${cur.tagColor || '#17324F'};
+                color:#FFFFFF;
+                font-size:11px;
+                font-weight:600;
+                padding:5px 14px;
+                border-radius:20px;
+              ">${cur.buttonText || 'Explore'}</div>
+            </div>
+            <div id="prev-img-wrap" style="width:72px; height:72px; display:flex; align-items:center; justify-content:center;">
+              ${renderBannerImageHtml(cur.imageUrl)}
+            </div>
+          </div>
+
+          <!-- Carousel Dots Indicator -->
+          <div style="display:flex; justify-content:center; gap:8px; margin-top:14px;">
+            ${activeBanners.map((_, i) => `
+              <div onclick="window.selectPreviewBanner(${i})" style="
+                width: ${i === previewBannerIdx ? '22px' : '7px'};
+                height: 7px;
+                border-radius: 4px;
+                background: ${i === previewBannerIdx ? 'var(--primary)' : '#CBD5E1'};
+                cursor: pointer;
+                transition: all 0.3s ease;
+              "></div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Banners List Table -->
+      <div class="table-card">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:60px;">Order</th>
+              <th>Banner Style</th>
+              <th>Tag & Title</th>
+              <th>Action Route</th>
+              <th>Image Preset</th>
+              <th>Status</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cachedBanners.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                  <span class="material-symbols-outlined" style="font-size: 2.2rem; display: block; margin-bottom: 8px; color: var(--primary);">view_carousel</span>
+                  <strong style="color: var(--navy); font-size: 1rem;">No Banners Configured</strong>
+                  <p style="font-size: 0.85rem; margin-top: 4px;">Click "Add New Banner" to create your first promotional banner.</p>
+                </td>
+              </tr>
+            ` : cachedBanners.map(b => `
+              <tr>
+                <td><strong>#${b.displayOrder}</strong></td>
+                <td>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:28px; height:28px; border-radius:6px; background:${b.bgColor}; border:1px solid rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:center;">
+                      <div style="width:8px; height:8px; border-radius:50%; background:${b.textColor};"></div>
+                    </div>
+                    <code style="font-size:0.75rem;">${b.bgColor}</code>
+                  </div>
+                </td>
+                <td>
+                  <strong style="font-size:0.78rem; text-transform:uppercase; color:${b.tagColor || 'var(--primary)'}; display:block;">${b.tag}</strong>
+                  <span style="font-size:0.88rem; color:var(--navy); font-weight:600;">${b.title}</span>
+                  ${b.subtitle ? `<div style="font-size:0.78rem; color:var(--text-dim); margin-top:1px;">${b.subtitle}</div>` : ''}
+                </td>
+                <td>
+                  <code style="background:#F1F5F9; padding:3px 8px; border-radius:4px; font-size:0.78rem;">${b.actionUrl}</code>
+                  <div style="font-size:0.74rem; color:var(--text-dim); margin-top:2px;">Btn: "${b.buttonText}"</div>
+                </td>
+                <td>
+                  <span class="badge badge-info" style="text-transform:capitalize;">${b.imageUrl || 'gift-box'}</span>
+                </td>
+                <td>
+                  <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+                    <input type="checkbox" ${b.isActive ? 'checked' : ''} onchange="window.toggleBannerActive('${b.id}', ${b.isActive})" />
+                    <span style="font-size:0.82rem; font-weight:600; color:${b.isActive ? 'var(--success)' : 'var(--text-dim)'};">
+                      ${b.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </label>
+                </td>
+                <td style="text-align:right;">
+                  <div style="display:inline-flex; gap:8px;">
+                    <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="window.openBannerModal('${b.id}')">
+                      <span class="material-symbols-outlined" style="font-size:1rem;">edit</span>
+                      <span>Edit</span>
+                    </button>
+                    <button class="btn-secondary" style="padding: 6px 10px; font-size: 0.8rem; color:var(--danger); border-color:rgba(239,68,68,0.3);" onclick="window.deleteBanner('${b.id}')">
+                      <span class="material-symbols-outlined" style="font-size:1rem;">delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function renderBannerImageHtml(key) {
+    if (!key || key === 'gift-box') {
+      return `
+        <div style="width:60px; height:60px; border-radius:12px; background:rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; font-size:32px;">
+          🎁
+        </div>
+      `;
+    }
+    if (key === 'phone-shield') {
+      return `
+        <div style="width:60px; height:60px; border-radius:12px; background:rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; font-size:32px;">
+          🛡️
+        </div>
+      `;
+    }
+    if (key === 'kyc-seal') {
+      return `
+        <div style="width:60px; height:60px; border-radius:12px; background:rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; font-size:32px;">
+          🏅
+        </div>
+      `;
+    }
+    if (key === 'credit-card') {
+      return `
+        <div style="width:60px; height:60px; border-radius:12px; background:rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; font-size:32px;">
+          💳
+        </div>
+      `;
+    }
+    if (key.startsWith('http://') || key.startsWith('https://')) {
+      return `<img src="${key}" style="width:60px; height:60px; object-fit:contain; border-radius:8px;" alt="Banner icon" />`;
+    }
+    return `
+      <div style="width:60px; height:60px; border-radius:12px; background:rgba(255,255,255,0.35); display:flex; align-items:center; justify-content:center; font-size:32px;">
+        ✨
+      </div>
+    `;
+  }
+
+  function updateLiveBannerPreview() {
+    const activeBanners = cachedBanners.filter(b => b.isActive);
+    if (activeBanners.length === 0) return;
+    const b = activeBanners[previewBannerIdx % activeBanners.length];
+    if (!b) return;
+
+    const card = document.getElementById('live-banner-preview-card');
+    if (!card) return;
+
+    card.style.background = b.bgColor || '#C5E76C';
+    card.style.color = b.textColor || '#000000';
+
+    const tag = document.getElementById('prev-tag');
+    if (tag) {
+      tag.textContent = b.tag || 'PROMO';
+      tag.style.color = b.tagColor || '#17324F';
+    }
+    const title = document.getElementById('prev-title');
+    if (title) {
+      title.textContent = b.title || '';
+      title.style.color = b.textColor || '#000000';
+    }
+    const sub = document.getElementById('prev-sub');
+    if (sub) {
+      sub.textContent = b.subtitle || '';
+      sub.style.color = b.textColor || '#000000';
+    }
+    const btn = document.getElementById('prev-btn');
+    if (btn) {
+      btn.textContent = b.buttonText || 'Explore';
+      btn.style.background = b.tagColor || '#17324F';
+    }
+    const imgWrap = document.getElementById('prev-img-wrap');
+    if (imgWrap) {
+      imgWrap.innerHTML = renderBannerImageHtml(b.imageUrl);
+    }
+  }
+
+  window.selectPreviewBanner = function(idx) {
+    previewBannerIdx = idx;
+    updateLiveBannerPreview();
+  };
+
+  window.openBannerModal = function(id) {
+    const isEdit = Boolean(id);
+    const item = isEdit
+      ? (cachedBanners.find(x => x.id === id) || {})
+      : {
+          tag: 'FAST BILL PAYMENTS',
+          title: 'Instant payments for bills and subscriptions',
+          subtitle: 'Zero delays, 100% automated delivery.',
+          buttonText: 'Explore',
+          actionUrl: '/(tabs)/services',
+          bgColor: '#C5E76C',
+          textColor: '#000000',
+          tagColor: '#17324F',
+          imageUrl: 'gift-box',
+          isActive: true,
+          displayOrder: cachedBanners.length
+        };
+
+    modalTitle.textContent = isEdit ? 'Edit Promotional Banner' : 'Create New Promotional Banner';
+    modalBody.innerHTML = `
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+        <div class="form-field" style="grid-column: span 2;">
+          <label>Banner Tag / Category Badge</label>
+          <input type="text" id="banner-input-tag" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:9px 12px; color:var(--text-main);" value="${item.tag || ''}" placeholder="e.g. AIRTIME CASHBACK, FAST BILL PAYMENTS" />
+        </div>
+
+        <div class="form-field" style="grid-column: span 2;">
+          <label>Headline / Main Title</label>
+          <input type="text" id="banner-input-title" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:9px 12px; color:var(--text-main);" value="${item.title || ''}" placeholder="e.g. Get instant cashback rewards on your next top-up!" />
+        </div>
+
+        <div class="form-field" style="grid-column: span 2;">
+          <label>Subtitle / Description (Optional)</label>
+          <input type="text" id="banner-input-subtitle" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:9px 12px; color:var(--text-main);" value="${item.subtitle || ''}" placeholder="e.g. Save more every time you recharge." />
+        </div>
+
+        <div class="form-field">
+          <label>Button Text</label>
+          <input type="text" id="banner-input-btn" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:9px 12px; color:var(--text-main);" value="${item.buttonText || 'Explore'}" placeholder="Buy now, Explore, Get Card" />
+        </div>
+
+        <div class="form-field">
+          <label>Action Route (In-App Destination)</label>
+          <input type="text" id="banner-input-route" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:9px 12px; color:var(--text-main);" value="${item.actionUrl || '/(tabs)/services'}" placeholder="/airtime, /data, /electricity, /(tabs)/cards" />
+        </div>
+
+        <!-- Preset Image Selector -->
+        <div class="form-field" style="grid-column: span 2;">
+          <label>Banner Image / Icon</label>
+          <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:10px; margin-top:6px;">
+            ${[
+              { id: 'gift-box', label: 'Gift Box', icon: '🎁' },
+              { id: 'phone-shield', label: 'Shield', icon: '🛡️' },
+              { id: 'kyc-seal', label: 'Reward Seal', icon: '🏅' },
+              { id: 'credit-card', label: 'Dollar Card', icon: '💳' }
+            ].map(p => `
+              <div onclick="window.selectModalBannerImage('${p.id}')" id="img-choice-${p.id}" style="
+                border: 2px solid ${item.imageUrl === p.id ? 'var(--primary)' : 'var(--border-color)'};
+                border-radius: 10px;
+                padding: 10px 6px;
+                text-align: center;
+                cursor: pointer;
+                background: ${item.imageUrl === p.id ? 'var(--bg-body)' : '#FFFFFF'};
+              ">
+                <div style="font-size:26px;">${p.icon}</div>
+                <div style="font-size:11px; font-weight:600; color:var(--navy); margin-top:4px;">${p.label}</div>
+              </div>
+            `).join('')}
+          </div>
+          <input type="hidden" id="banner-input-image" value="${item.imageUrl || 'gift-box'}" />
+          <div style="margin-top:8px;">
+            <input type="text" id="banner-custom-image-url" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:7px 10px; color:var(--text-main); font-size:0.8rem;" placeholder="Or paste custom image HTTPS URL..." value="${(item.imageUrl && item.imageUrl.startsWith('http')) ? item.imageUrl : ''}" oninput="window.setCustomBannerImageUrl(this.value)" />
+          </div>
+        </div>
+
+        <!-- Color Palette Quick Swatches -->
+        <div class="form-field" style="grid-column: span 2;">
+          <label>Color Theme Presets</label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+            ${[
+              { name: 'Lime Fresh', bg: '#C5E76C', text: '#000000', tag: '#17324F' },
+              { name: 'Sky Blue', bg: '#D9F2FF', text: '#0B3B60', tag: '#0077B6' },
+              { name: 'Warm Amber', bg: '#FFECC8', text: '#4A2800', tag: '#9A5800' },
+              { name: 'Mint Green', bg: '#DCFCE7', text: '#14532D', tag: '#15803D' },
+              { name: 'Soft Purple', bg: '#F3E8FF', text: '#3B0764', tag: '#7E22CE' },
+              { name: 'Midnight Navy', bg: '#17324F', text: '#FFFFFF', tag: '#C5E76C' }
+            ].map(col => `
+              <div onclick="window.applyBannerPalette('${col.bg}', '${col.text}', '${col.tag}')" style="
+                cursor:pointer;
+                display:flex;
+                align-items:center;
+                gap:6px;
+                border:1px solid var(--border-color);
+                border-radius:20px;
+                padding:4px 10px;
+                background:#FFFFFF;
+              ">
+                <span style="width:16px; height:16px; border-radius:50%; background:${col.bg}; border:1px solid rgba(0,0,0,0.15);"></span>
+                <span style="font-size:12px; font-weight:600; color:var(--navy);">${col.name}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Custom Color Inputs -->
+        <div class="form-field">
+          <label>Background Color</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="color" id="banner-color-bg" value="${item.bgColor || '#C5E76C'}" style="width:40px; height:36px; border:none; border-radius:6px; cursor:pointer;" oninput="document.getElementById('banner-input-bg').value=this.value; window.refreshModalPreview();" />
+            <input type="text" id="banner-input-bg" class="input-icon-wrap" style="flex:1; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:7px 10px; color:var(--text-main);" value="${item.bgColor || '#C5E76C'}" oninput="document.getElementById('banner-color-bg').value=this.value; window.refreshModalPreview();" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label>Text Color</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="color" id="banner-color-text" value="${item.textColor || '#000000'}" style="width:40px; height:36px; border:none; border-radius:6px; cursor:pointer;" oninput="document.getElementById('banner-input-text').value=this.value; window.refreshModalPreview();" />
+            <input type="text" id="banner-input-text" class="input-icon-wrap" style="flex:1; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:7px 10px; color:var(--text-main);" value="${item.textColor || '#000000'}" oninput="document.getElementById('banner-color-text').value=this.value; window.refreshModalPreview();" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label>Tag & Button Color</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input type="color" id="banner-color-tag" value="${item.tagColor || '#17324F'}" style="width:40px; height:36px; border:none; border-radius:6px; cursor:pointer;" oninput="document.getElementById('banner-input-tag-color').value=this.value; window.refreshModalPreview();" />
+            <input type="text" id="banner-input-tag-color" class="input-icon-wrap" style="flex:1; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:7px 10px; color:var(--text-main);" value="${item.tagColor || '#17324F'}" oninput="document.getElementById('banner-color-tag').value=this.value; window.refreshModalPreview();" />
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label>Display Order (0, 1, 2...)</label>
+          <input type="number" id="banner-input-order" class="input-icon-wrap" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:7px 10px; color:var(--text-main);" value="${item.displayOrder !== undefined ? item.displayOrder : 0}" />
+        </div>
+
+        <div class="form-field" style="grid-column: span 2;">
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+            <input type="checkbox" id="banner-input-active" ${item.isActive !== false ? 'checked' : ''} style="width:18px; height:18px;" />
+            <span style="font-weight:600; color:var(--navy);">Active (Include in mobile app banner rotation)</span>
+          </label>
+        </div>
+
+        <!-- Modal Live Preview -->
+        <div style="grid-column: span 2; margin-top:8px;">
+          <label style="font-size:12px; font-weight:700; color:var(--text-dim); text-transform:uppercase; margin-bottom:6px; display:block;">Live Preview</label>
+          <div id="modal-card-preview" style="
+            background: ${item.bgColor || '#C5E76C'};
+            color: ${item.textColor || '#000000'};
+            border-radius: 14px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 110px;
+          ">
+            <div style="flex:1; padding-right:10px;">
+              <span id="mprev-tag" style="display:inline-block; font-size:11px; font-weight:700; color:${item.tagColor || '#17324F'}; text-transform:uppercase; margin-bottom:4px;">
+                ${item.tag || 'AIRTIME CASHBACK'}
+              </span>
+              <h4 id="mprev-title" style="font-size:14px; font-weight:700; margin:0 0 4px 0; color:${item.textColor || '#000000'};">
+                ${item.title || 'Get instant rewards!'}
+              </h4>
+              <p id="mprev-sub" style="font-size:11px; opacity:0.85; margin:0 0 8px 0; color:${item.textColor || '#000000'};">
+                ${item.subtitle || ''}
+              </p>
+              <div id="mprev-btn" style="display:inline-block; background:${item.tagColor || '#17324F'}; color:#FFFFFF; font-size:11px; font-weight:600; padding:4px 12px; border-radius:16px;">
+                ${item.buttonText || 'Explore'}
+              </div>
+            </div>
+            <div id="mprev-img" style="font-size:32px;">
+              ${renderBannerImageHtml(item.imageUrl)}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Hook reactive inputs
+    ['banner-input-tag', 'banner-input-title', 'banner-input-subtitle', 'banner-input-btn'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', window.refreshModalPreview);
+    });
+
+    modalFooter.innerHTML = `
+      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto; padding: 10px 24px;" onclick="window.saveBanner('${item.id || ''}')">
+        <span class="material-symbols-outlined">save</span>
+        <span>${isEdit ? 'Save Changes' : 'Create Banner'}</span>
+      </button>
+    `;
+
+    modalBackdrop.classList.add('active');
+  };
+
+  window.selectModalBannerImage = function(imgKey) {
+    document.getElementById('banner-input-image').value = imgKey;
+    document.querySelectorAll('[id^="img-choice-"]').forEach(el => {
+      el.style.border = '2px solid var(--border-color)';
+      el.style.background = '#FFFFFF';
+    });
+    const selected = document.getElementById(`img-choice-${imgKey}`);
+    if (selected) {
+      selected.style.border = '2px solid var(--primary)';
+      selected.style.background = 'var(--bg-body)';
+    }
+    const customInput = document.getElementById('banner-custom-image-url');
+    if (customInput) customInput.value = '';
+    window.refreshModalPreview();
+  };
+
+  window.setCustomBannerImageUrl = function(url) {
+    if (url && url.trim().length > 0) {
+      document.getElementById('banner-input-image').value = url.trim();
+      document.querySelectorAll('[id^="img-choice-"]').forEach(el => {
+        el.style.border = '2px solid var(--border-color)';
+        el.style.background = '#FFFFFF';
+      });
+      window.refreshModalPreview();
+    }
+  };
+
+  window.applyBannerPalette = function(bg, text, tag) {
+    document.getElementById('banner-color-bg').value = bg;
+    document.getElementById('banner-input-bg').value = bg;
+    document.getElementById('banner-color-text').value = text;
+    document.getElementById('banner-input-text').value = text;
+    document.getElementById('banner-color-tag').value = tag;
+    document.getElementById('banner-input-tag-color').value = tag;
+    window.refreshModalPreview();
+  };
+
+  window.refreshModalPreview = function() {
+    const bg = document.getElementById('banner-input-bg')?.value || '#C5E76C';
+    const text = document.getElementById('banner-input-text')?.value || '#000000';
+    const tagColor = document.getElementById('banner-input-tag-color')?.value || '#17324F';
+    const tag = document.getElementById('banner-input-tag')?.value || 'PROMO';
+    const title = document.getElementById('banner-input-title')?.value || 'Title';
+    const sub = document.getElementById('banner-input-subtitle')?.value || '';
+    const btn = document.getElementById('banner-input-btn')?.value || 'Explore';
+    const img = document.getElementById('banner-input-image')?.value || 'gift-box';
+
+    const card = document.getElementById('modal-card-preview');
+    if (card) {
+      card.style.background = bg;
+      card.style.color = text;
+    }
+    const tEl = document.getElementById('mprev-tag');
+    if (tEl) {
+      tEl.textContent = tag;
+      tEl.style.color = tagColor;
+    }
+    const tiEl = document.getElementById('mprev-title');
+    if (tiEl) {
+      tiEl.textContent = title;
+      tiEl.style.color = text;
+    }
+    const sEl = document.getElementById('mprev-sub');
+    if (sEl) {
+      sEl.textContent = sub;
+      sEl.style.color = text;
+    }
+    const bEl = document.getElementById('mprev-btn');
+    if (bEl) {
+      bEl.textContent = btn;
+      bEl.style.background = tagColor;
+    }
+    const iEl = document.getElementById('mprev-img');
+    if (iEl) {
+      iEl.innerHTML = renderBannerImageHtml(img);
+    }
+  };
+
+  window.saveBanner = async function(id) {
+    const tag = document.getElementById('banner-input-tag')?.value.trim();
+    const title = document.getElementById('banner-input-title')?.value.trim();
+    const subtitle = document.getElementById('banner-input-subtitle')?.value.trim();
+    const buttonText = document.getElementById('banner-input-btn')?.value.trim() || 'Explore';
+    const actionUrl = document.getElementById('banner-input-route')?.value.trim() || '/(tabs)/services';
+    const imageUrl = document.getElementById('banner-input-image')?.value.trim() || 'gift-box';
+    const bgColor = document.getElementById('banner-input-bg')?.value.trim() || '#C5E76C';
+    const textColor = document.getElementById('banner-input-text')?.value.trim() || '#000000';
+    const tagColor = document.getElementById('banner-input-tag-color')?.value.trim() || '#17324F';
+    const displayOrder = parseInt(document.getElementById('banner-input-order')?.value, 10) || 0;
+    const isActive = document.getElementById('banner-input-active')?.checked;
+
+    if (!tag || !title) {
+      alert('Please provide both a tag and a title for the banner.');
+      return;
+    }
+
+    const payload = {
+      tag,
+      title,
+      subtitle: subtitle || null,
+      buttonText,
+      actionUrl,
+      imageUrl,
+      bgColor,
+      textColor,
+      tagColor,
+      displayOrder,
+      isActive: Boolean(isActive)
+    };
+
+    const isEdit = Boolean(id);
+    const endpoint = isEdit ? `/admin/banners/${id}` : '/admin/banners';
+    const method = isEdit ? 'PUT' : 'POST';
+
+    const res = await apiRequest(endpoint, {
+      method,
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.success) {
+      alert(`Failed to save banner: ${res.error}`);
+      return;
+    }
+
+    closeModal();
+    showToast(`Banner "${title}" saved successfully!`);
+    renderBanners(document.getElementById('view-content-root'));
+  };
+
+  window.toggleBannerActive = async function(id, currentActive) {
+    const res = await apiRequest(`/admin/banners/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ isActive: !currentActive })
+    });
+    if (!res.success) {
+      alert(`Failed to update banner status: ${res.error}`);
+      return;
+    }
+    showToast('Banner visibility updated.');
+    renderBanners(document.getElementById('view-content-root'));
+  };
+
+  window.deleteBanner = async function(id) {
+    if (!confirm('Are you sure you want to delete this promotional banner?')) return;
+    const res = await apiRequest(`/admin/banners/${id}`, { method: 'DELETE' });
+    if (!res.success) {
+      alert(`Failed to delete banner: ${res.error}`);
+      return;
+    }
+    showToast('Banner deleted successfully.');
+    renderBanners(document.getElementById('view-content-root'));
+  };
 
   // Helper UI
   function renderErrorAlert(msg, retryFn) {
