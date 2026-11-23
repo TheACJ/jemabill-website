@@ -1680,7 +1680,9 @@
       return;
     }
 
-    cachedBanners = Array.isArray(res.data) ? res.data : [];
+    cachedBanners = Array.isArray(res.data)
+      ? res.data
+      : (res.data && Array.isArray(res.data.data) ? res.data.data : []);
     const activeBanners = cachedBanners.filter(b => b.isActive);
     if (activeBanners.length === 0 && cachedBanners.length > 0) {
       activeBanners.push(cachedBanners[0]);
