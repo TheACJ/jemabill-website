@@ -488,7 +488,11 @@
             ` : items.map(k => `
               <tr data-status="${k.status}" data-search="${(k.userName || '') + ' ' + (k.idLast4 || '')}">
                 <td><code>${k.id.slice(0, 8)}...</code></td>
-                <td><strong>${k.userName || k.userEmailMasked || 'Applicant'}</strong></td>
+                <td>
+                  <strong>${k.userName || 'Applicant'}</strong>
+                  ${k.userEmail ? `<div style="font-size:0.75rem; color:var(--text-dim);">${k.userEmail}</div>` : (k.userEmailMasked ? `<div style="font-size:0.75rem; color:var(--text-dim);">${k.userEmailMasked}</div>` : '')}
+                  ${k.userPhone ? `<div style="font-size:0.75rem; color:var(--text-dim);">${k.userPhone}</div>` : ''}
+                </td>
                 <td><span class="badge badge-neutral">${k.idType || 'NIN'}</span></td>
                 <td>•••• ${k.idLast4 || '****'}</td>
                 <td>
@@ -657,14 +661,14 @@
             ` : users.map(u => {
               const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User';
               return `
-                <tr class="clickable" data-role="${u.role}" data-search="${fullName + ' ' + (u.emailMasked || '') + ' ' + (u.phoneMasked || '')}" onclick="window.openUserDrawer('${u.id}')">
+                <tr class="clickable" data-role="${u.role}" data-search="${fullName + ' ' + (u.email || u.emailMasked || '') + ' ' + (u.phone || u.phoneMasked || '')}" onclick="window.openUserDrawer('${u.id}')">
                   <td>
                     <strong>${fullName}</strong>
                     <div style="font-size:0.75rem; color:var(--text-dim);"><code>${u.id.slice(0, 8)}...</code></div>
                   </td>
                   <td>
-                    <div>${u.phoneMasked || 'No phone'}</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">${u.emailMasked || '—'}</div>
+                    <div>${u.phone || u.phoneMasked || 'No phone'}</div>
+                    <div style="font-size:0.75rem; color:var(--text-dim);">${u.email || u.emailMasked || '—'}</div>
                   </td>
                   <td>
                     <span class="badge ${u.role === 'ADMIN' ? 'badge-warning' : 'badge-neutral'}">${u.role}</span>
@@ -738,8 +742,8 @@
         <div class="section-label">Account Overview</div>
         <div class="detail-row"><span>User ID</span><span><code>${d.id}</code></span></div>
         <div class="detail-row"><span>Full Name</span><span>${fullName}</span></div>
-        <div class="detail-row"><span>Email</span><span>${d.contact?.emailMasked || '—'}</span></div>
-        <div class="detail-row"><span>Phone</span><span>${d.contact?.phoneMasked || '—'}</span></div>
+        <div class="detail-row"><span>Email</span><span>${d.contact?.email || d.contact?.emailMasked || '—'}</span></div>
+        <div class="detail-row"><span>Phone</span><span>${d.contact?.phone || d.contact?.phoneMasked || '—'}</span></div>
         <div class="detail-row"><span>KYC Status</span><span class="badge ${d.kyc?.status === 'APPROVED' ? 'badge-success' : 'badge-neutral'}">${d.kyc?.status || 'NONE'} (Tier ${d.kyc?.tier || 0})</span></div>
         <div class="detail-row"><span>Wallet Balance</span><span style="font-size:1.15rem; color:var(--navy); font-weight:700;">₦${balanceNaira}</span></div>
         <div class="detail-row"><span>Security Flags</span><span>${d.flags?.pinSet ? 'PIN Active' : 'No PIN'} • ${d.flags?.pinLocked ? '<strong style="color:var(--danger);">LOCKED</strong>' : 'Unlocked'}</span></div>
@@ -846,10 +850,10 @@
                 </td>
               </tr>
             ` : txs.map(t => `
-              <tr class="clickable" data-status="${t.status}" data-search="${t.id + ' ' + (t.userEmailMasked || '') + ' ' + (t.provider || '')}" onclick="window.inspectTx('${t.id}')">
+              <tr class="clickable" data-status="${t.status}" data-search="${t.id + ' ' + (t.userEmail || t.userEmailMasked || '') + ' ' + (t.provider || '')}" onclick="window.inspectTx('${t.id}')">
                 <td><code>${t.id.slice(0, 8)}...</code></td>
                 <td><strong>${t.type}</strong></td>
-                <td>${t.userEmailMasked || '—'}</td>
+                <td>${t.userEmail || t.userEmailMasked || '—'}</td>
                 <td><strong style="color:var(--navy);">₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
                 <td>₦${((t.feeKobo || 0) / 100).toFixed(2)}</td>
                 <td><span class="badge badge-neutral">${t.provider || 'internal'}</span></td>
@@ -912,14 +916,29 @@
       <div class="drawer-section">
         <div class="section-label">Transaction Details</div>
         <div class="detail-row"><span>ID / UUID</span><span><code>${tx.id}</code></span></div>
-        <div class="detail-row"><span>Customer</span><span>${tx.userEmailMasked || '—'}</span></div>
+        <div class="detail-row"><span>Customer</span><span>${tx.userEmail || tx.userEmailMasked || '—'}</span></div>
         <div class="detail-row"><span>Type</span><span><span class="badge badge-neutral">${tx.type}</span></span></div>
         <div class="detail-row"><span>Status</span><span><span class="badge ${tx.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${tx.status}</span></span></div>
         <div class="detail-row"><span>Amount</span><span style="font-size:1.1rem; color:var(--navy); font-weight:700;">₦${((tx.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</span></div>
         <div class="detail-row"><span>Fee</span><span>₦${((tx.feeKobo || 0) / 100).toFixed(2)}</span></div>
         <div class="detail-row"><span>Provider</span><span>${tx.provider || 'internal'}</span></div>
+        <div class="detail-row"><span>External Reference</span><span><code>${tx.externalReference || tx.providerReference || '—'}</code></span></div>
         <div class="detail-row"><span>Requery Attempts</span><span>${tx.requeryAttempts || 0}</span></div>
       </div>
+
+      ${tx.metadata && Object.keys(tx.metadata).length > 0 ? `
+        <div class="drawer-section">
+          <div class="section-label">Observability & Metadata</div>
+          <div style="background:var(--bg-app); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border-color); font-size:0.85rem; display:flex; flex-direction:column; gap:6px;">
+            ${Object.entries(tx.metadata).map(([k, v]) => `
+              <div style="display:flex; justify-content:space-between; gap:12px; word-break:break-all;">
+                <span style="color:var(--text-dim); font-weight:500;">${k}</span>
+                <span style="font-weight:600; color:var(--navy); text-align:right;">${typeof v === 'object' && v !== null ? JSON.stringify(v) : v}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
 
       <div class="drawer-section">
         <div class="section-label">Audit & Lifecycle History</div>
@@ -1042,7 +1061,7 @@
               <tr>
                 <td><code>${d.externalReference || d.id.slice(0, 12)}</code></td>
                 <td><strong>${d.provider}</strong></td>
-                <td>${d.userEmailMasked || '—'}</td>
+                <td>${d.userEmail || d.userEmailMasked || '—'}</td>
                 <td><strong style="color:var(--navy);">₦${((d.grossKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
                 <td><span style="color:var(--primary); font-weight:600;">₦${((d.providerFeeKobo || 0) / 100).toFixed(2)}</span></td>
                 <td><span class="badge ${d.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${d.status}</span></td>
@@ -1647,8 +1666,8 @@
             ` : claims.map(c => `
               <tr>
                 <td><code>${c.id.slice(0, 8)}...</code></td>
-                <td>${c.userEmailMasked || '—'}</td>
-                <td><code>${c.cardReference || '****'}</code></td>
+                <td>${c.userEmail || c.userEmailMasked || '—'}</td>
+                <td><code>${c.accountNumber || c.cardReference || c.accountNumberMasked || '—'}</code></td>
                 <td><strong>$${(c.amountUsd || 0).toFixed(2)}</strong></td>
                 <td><span class="badge badge-warning">${c.status}</span></td>
                 <td style="color:var(--text-dim);">${new Date(c.createdAt).toLocaleDateString()}</td>
