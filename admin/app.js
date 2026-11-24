@@ -621,7 +621,24 @@
   let cachedAllTransactions = [];
   let currentDrawerUserData = null;
 
-  window.downloadTransactionsPdf = function (txList, reportTitle = 'JemaBill Transactions Report', reportSubtitle = '') {
+  let cachedLogoDataUrl = null;
+  async function loadLogoDataUrl() {
+    if (cachedLogoDataUrl) return cachedLogoDataUrl;
+    try {
+      const blob = await (await fetch('/assets/images/logo.png')).blob();
+      cachedLogoDataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    } catch (e) {
+      cachedLogoDataUrl = null;
+    }
+    return cachedLogoDataUrl;
+  }
+
+  window.downloadTransactionsPdf = async function (txList, reportTitle = 'JemaBill Transactions Report', reportSubtitle = '') {
     if (!Array.isArray(txList) || txList.length === 0) {
       alert('No transactions available to export in this selection.');
       return;
@@ -637,12 +654,28 @@
     const totalFeeStr = 'NGN ' + (totalFeeKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
     const generatedAt = new Date().toLocaleString();
 
+    const logo = await loadLogoDataUrl();
     const jspdfNs = window.jspdf;
     if (jspdfNs && jspdfNs.jsPDF) {
       const doc = new jspdfNs.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const addWatermark = () => {
+        if (!logo) return;
+        try {
+          const size = 300;
+          doc.saveGraphicsState();
+          doc.setGState(new doc.GState({ opacity: 0.07 }));
+          doc.addImage(logo, 'PNG', (pageW - size) / 2, (pageH - size) / 2, size, size);
+          doc.restoreGraphicsState();
+        } catch (e) { /* watermark is cosmetic */ }
+      };
+      if (logo) {
+        try { doc.addImage(logo, 'PNG', 40, 20, 34, 34); } catch (e) { /* ignore */ }
+      }
       doc.setFontSize(16);
       doc.setTextColor(13, 31, 34);
-      doc.text('JEMABILL — OFFICIAL TRANSACTION REPORT', 40, 40);
+      doc.text('JEMABILL — OFFICIAL TRANSACTION REPORT', logo ? 84 : 40, 42);
 
       doc.setFontSize(11);
       doc.setTextColor(50, 65, 70);
@@ -688,6 +721,7 @@
           styles: { fontSize: 7.5, cellPadding: 4 },
           headStyles: { fillColor: [13, 31, 34], textColor: [255, 255, 255] },
           alternateRowStyles: { fillColor: [247, 250, 248] },
+          didDrawPage: addWatermark,
         });
       }
 
@@ -714,10 +748,14 @@
             table { width: 100%; border-collapse: collapse; font-size: 11px; }
             th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
             th { background: #0D1F22; color: #fff; }
+            .wm { position: fixed; top: 50%; left: 50%; width: 380px; height: 380px; margin: -190px 0 0 -190px; opacity: 0.07; z-index: -1; }
+            .hdr { display: flex; align-items: center; gap: 10px; }
+            .hdr img { width: 40px; height: 40px; }
           </style>
         </head>
         <body>
-          <h1>JEMABILL — ${reportTitle}</h1>
+          ${logo ? `<img class="wm" src="${logo}" alt="">` : ''}
+          <div class="hdr">${logo ? `<img src="${logo}" alt="JemaBill">` : ''}<h1>JEMABILL — ${reportTitle}</h1></div>
           <p>${reportSubtitle || ''}</p>
           <p><strong>Records:</strong> ${txList.length} | <strong>Total Volume:</strong> ${totalNairaStr} | <strong>Total Fees:</strong> ${totalFeeStr} | <strong>Generated:</strong> ${generatedAt}</p>
           <table>
