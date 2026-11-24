@@ -276,6 +276,9 @@
       case 'users':
         await renderUsers(container);
         break;
+      case 'messaging':
+        await renderMessaging(container);
+        break;
       case 'transactions':
         await renderTransactions(container);
         break;
@@ -612,29 +615,212 @@
   };
 
   // ==========================================
-  // 3. User Management Screen
+  // 3. User Management, User Activities, Messaging & PDF Exports
   // ==========================================
+  let cachedUsersList = [];
+  let cachedAllTransactions = [];
+  let currentDrawerUserData = null;
+
+  window.downloadTransactionsPdf = function (txList, reportTitle = 'JemaBill Transactions Report', reportSubtitle = '') {
+    if (!Array.isArray(txList) || txList.length === 0) {
+      alert('No transactions available to export in this selection.');
+      return;
+    }
+
+    const totalKobo = txList.reduce((acc, t) => acc + (Number(t.amountKobo) || 0), 0);
+    const totalFeeKobo = txList.reduce((acc, t) => acc + (Number(t.feeKobo) || 0), 0);
+    const successCount = txList.filter(t => t.status === 'SUCCESS').length;
+    const pendingCount = txList.filter(t => t.status === 'PENDING').length;
+    const failedCount = txList.filter(t => t.status === 'FAILED').length;
+
+    const totalNairaStr = 'NGN ' + (totalKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    const totalFeeStr = 'NGN ' + (totalFeeKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+    const generatedAt = new Date().toLocaleString();
+
+    const jspdfNs = window.jspdf;
+    if (jspdfNs && jspdfNs.jsPDF) {
+      const doc = new jspdfNs.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      doc.setFontSize(16);
+      doc.setTextColor(13, 31, 34);
+      doc.text('JEMABILL — OFFICIAL TRANSACTION REPORT', 40, 40);
+
+      doc.setFontSize(11);
+      doc.setTextColor(50, 65, 70);
+      doc.text(String(reportTitle), 40, 60);
+      if (reportSubtitle) {
+        doc.setFontSize(9.5);
+        doc.text(String(reportSubtitle), 40, 75);
+      }
+
+      doc.setFontSize(9);
+      doc.setTextColor(90, 100, 105);
+      doc.text(
+        `Generated: ${generatedAt}   |   Records: ${txList.length} (Success: ${successCount}, Pending: ${pendingCount}, Failed: ${failedCount})   |   Total Volume: ${totalNairaStr}   |   Total Fees: ${totalFeeStr}`,
+        40,
+        reportSubtitle ? 92 : 78
+      );
+
+      const tableRows = txList.map((t, idx) => {
+        const dt = new Date(t.createdAt || t.updatedAt || Date.now()).toLocaleString();
+        const customer = [t.userName, t.userEmail || t.userEmailMasked, t.userPhone].filter(Boolean).join(' / ') || t.userId || '—';
+        const amt = 'NGN ' + ((Number(t.amountKobo) || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+        const fee = 'NGN ' + ((Number(t.feeKobo) || 0) / 100).toFixed(2);
+        return [
+          String(idx + 1),
+          String(t.id || '').slice(0, 13),
+          dt,
+          customer,
+          String(t.type || '—'),
+          String(t.direction || 'DEBIT'),
+          String(t.provider || 'wallet'),
+          amt,
+          fee,
+          String(t.status || '—') + (t.needsReview ? ' (REVIEW)' : ''),
+          String(t.failureReason || t.externalReference || t.providerReference || '—').slice(0, 40),
+        ];
+      });
+
+      if (typeof doc.autoTable === 'function') {
+        doc.autoTable({
+          startY: reportSubtitle ? 105 : 92,
+          head: [['#', 'Tx ID', 'Date / Time', 'Customer (Name / Email / Phone)', 'Type', 'Dir', 'Provider', 'Amount', 'Fee', 'Status', 'Reference / Note']],
+          body: tableRows,
+          styles: { fontSize: 7.5, cellPadding: 4 },
+          headStyles: { fillColor: [13, 31, 34], textColor: [255, 255, 255] },
+          alternateRowStyles: { fillColor: [247, 250, 248] },
+        });
+      }
+
+      const safeSlug = String(reportTitle).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'transactions';
+      doc.save(`${safeSlug}_${Date.now()}.pdf`);
+      showToast(`Downloaded PDF (${txList.length} transactions).`);
+      return;
+    }
+
+    // Fallback printable PDF window if CDN is blocked
+    const win = window.open('', '_blank');
+    if (!win) {
+      alert('Please allow popups to download the PDF statement.');
+      return;
+    }
+    win.document.write(`
+      <html>
+        <head>
+          <title>${reportTitle}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #0D1F22; }
+            h1 { font-size: 18px; margin-bottom: 4px; }
+            p { font-size: 12px; color: #555; margin: 2px 0 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+            th { background: #0D1F22; color: #fff; }
+          </style>
+        </head>
+        <body>
+          <h1>JEMABILL — ${reportTitle}</h1>
+          <p>${reportSubtitle || ''}</p>
+          <p><strong>Records:</strong> ${txList.length} | <strong>Total Volume:</strong> ${totalNairaStr} | <strong>Total Fees:</strong> ${totalFeeStr} | <strong>Generated:</strong> ${generatedAt}</p>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Transaction ID</th><th>Date</th><th>Customer</th><th>Type</th><th>Provider</th><th>Amount</th><th>Fee</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              ${txList.map((t, i) => `
+                <tr>
+                  <td>${i + 1}</td>
+                  <td>${t.id}</td>
+                  <td>${new Date(t.createdAt || t.updatedAt || Date.now()).toLocaleString()}</td>
+                  <td>${[t.userName, t.userEmail || t.userEmailMasked, t.userPhone].filter(Boolean).join(' • ') || t.userId || '—'}</td>
+                  <td>${t.type}</td>
+                  <td>${t.provider || 'wallet'}</td>
+                  <td>₦${((Number(t.amountKobo) || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+                  <td>₦${((Number(t.feeKobo) || 0) / 100).toFixed(2)}</td>
+                  <td>${t.status}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+          <script>window.onload = () => { window.print(); };<\/script>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
+  window.downloadUserTransactionsPdf = async function (userId, userName, userEmail, userPhone) {
+    showToast('Fetching all transactions for user PDF export...');
+    const res = await apiRequest(`/admin/transactions?all=true&userId=${encodeURIComponent(userId)}&limit=500`);
+    let items = (res.success && res.data && res.data.items) || [];
+
+    if (items.length === 0) {
+      const uRes = await apiRequest(`/admin/users/${encodeURIComponent(userId)}`);
+      if (uRes.success && uRes.data && Array.isArray(uRes.data.recentTransactions)) {
+        items = uRes.data.recentTransactions.map(t => ({
+          ...t,
+          userName,
+          userEmail,
+          userPhone,
+        }));
+      }
+    } else {
+      items = items.map(t => ({
+        ...t,
+        userName: t.userName || userName,
+        userEmail: t.userEmail || userEmail,
+        userPhone: t.userPhone || userPhone,
+      }));
+    }
+
+    if (items.length === 0) {
+      alert(`No transactions found for ${userName || userEmail || userId}.`);
+      return;
+    }
+
+    window.downloadTransactionsPdf(
+      items,
+      `Customer Transactions Statement — ${userName || 'Customer'}`,
+      `Email: ${userEmail || '—'}   |   Phone: ${userPhone || '—'}   |   User ID: ${userId}`
+    );
+  };
+
   async function renderUsers(container) {
-    const res = await apiRequest('/admin/users');
+    const res = await apiRequest('/admin/users?limit=100');
     if (!res.success) {
       container.innerHTML = renderErrorAlert(res.error, () => renderUsers(container));
       return;
     }
 
     const users = (res.data && res.data.items) || [];
+    cachedUsersList = users;
 
     container.innerHTML = `
-      <div class="toolbar">
+      <div class="toolbar" style="flex-wrap:wrap; gap:12px;">
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
           <input type="text" id="users-search" placeholder="Search by name, email, phone..." oninput="window.filterUsersTable()" />
         </div>
-        <div class="filters-group">
+        <div class="filters-group" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
           <select class="filter-select" id="users-role-filter" onchange="window.filterUsersTable()">
             <option value="ALL">All Roles</option>
             <option value="USER">Regular Users</option>
             <option value="ADMIN">Administrators</option>
           </select>
+          <select class="filter-select" id="users-kyc-filter" onchange="window.filterUsersTable()">
+            <option value="ALL">All KYC Statuses</option>
+            <option value="APPROVED">KYC Approved</option>
+            <option value="PENDING">KYC Pending</option>
+            <option value="NEEDS_REVIEW">KYC Needs Review</option>
+            <option value="UNVERIFIED">KYC Unverified</option>
+            <option value="REJECTED">KYC Rejected</option>
+          </select>
+          <button class="btn-secondary" style="width:auto; padding:8px 14px; font-size:0.82rem;" onclick="window.openSelectedUsersMessageModal()">
+            <span class="material-symbols-outlined" style="font-size:1.05rem;">forward_to_inbox</span>
+            <span>Email / SMS Selected Users</span>
+          </button>
+          <button class="btn-primary" style="width:auto; padding:8px 16px; font-size:0.82rem;" onclick="window.openCommunicationModal({ targetType: 'all' })">
+            <span class="material-symbols-outlined" style="font-size:1.05rem;">campaign</span>
+            <span>Broadcast to All / Group</span>
+          </button>
         </div>
       </div>
 
@@ -642,52 +828,75 @@
         <table class="data-table" id="users-table">
           <thead>
             <tr>
+              <th style="width:36px;">
+                <input type="checkbox" id="select-all-users-cb" onchange="window.toggleSelectAllUsers(this.checked)" />
+              </th>
               <th>Full Name</th>
-              <th>Contact Details</th>
+              <th>Full Email &amp; Phone (Unredacted)</th>
               <th>Role</th>
               <th>KYC Status</th>
-              <th>Verified</th>
+              <th>Verification</th>
               <th>Joined</th>
-              <th>Action</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             ${users.length === 0 ? `
               <tr>
-                <td colspan="7" style="text-align: center; padding: 48px; color: var(--text-dim);">
+                <td colspan="8" style="text-align: center; padding: 48px; color: var(--text-dim);">
                   No user accounts found.
                 </td>
               </tr>
             ` : users.map(u => {
               const fullName = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User';
+              const fullEmail = u.email || u.emailMasked || '—';
+              const fullPhone = u.phone || u.phoneMasked || 'No phone';
+              const safeNameAttr = fullName.replace(/'/g, "\\'");
+              const safeEmailAttr = fullEmail.replace(/'/g, "\\'");
+              const safePhoneAttr = fullPhone.replace(/'/g, "\\'");
+
               return `
-                <tr class="clickable" data-role="${u.role}" data-search="${fullName + ' ' + (u.email || u.emailMasked || '') + ' ' + (u.phone || u.phoneMasked || '')}" onclick="window.openUserDrawer('${u.id}')">
-                  <td>
-                    <strong>${fullName}</strong>
-                    <div style="font-size:0.75rem; color:var(--text-dim);"><code>${u.id.slice(0, 8)}...</code></div>
+                <tr class="clickable" data-role="${u.role}" data-kyc="${u.kycStatus || 'UNVERIFIED'}" data-search="${fullName + ' ' + fullEmail + ' ' + fullPhone + ' ' + u.id}" onclick="window.openUserDrawer('${u.id}')">
+                  <td onclick="event.stopPropagation();">
+                    <input type="checkbox" class="user-select-cb" value="${u.id}" data-name="${fullName}" />
                   </td>
                   <td>
-                    <div>${u.phone || u.phoneMasked || 'No phone'}</div>
-                    <div style="font-size:0.75rem; color:var(--text-dim);">${u.email || u.emailMasked || '—'}</div>
+                    <strong>${fullName}</strong>
+                    <div style="font-size:0.75rem; color:var(--text-dim);"><code>${u.id}</code></div>
+                  </td>
+                  <td>
+                    <div style="font-weight:600; color:var(--navy);">${fullEmail}</div>
+                    <div style="font-size:0.82rem; color:var(--text-main); font-family:monospace;">${fullPhone}</div>
                   </td>
                   <td>
                     <span class="badge ${u.role === 'ADMIN' ? 'badge-warning' : 'badge-neutral'}">${u.role}</span>
                   </td>
                   <td>
                     <span class="badge ${u.kycStatus === 'APPROVED' ? 'badge-success' : u.kycStatus === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}">
-                      ${u.kycStatus || 'NONE'}
+                      ${u.kycStatus || 'UNVERIFIED'}
                     </span>
                   </td>
                   <td>
-                    <span style="font-size:0.8rem; color:${u.emailVerified ? 'var(--success)' : 'var(--text-dim)'};">
-                      ${u.emailVerified ? '✓ Email' : 'Email unverified'}
-                    </span>
+                    <div style="font-size:0.78rem; color:${u.emailVerified ? 'var(--success)' : 'var(--text-dim)'};">
+                      ${u.emailVerified ? '✓ Email Verified' : '✗ Email Unverified'}
+                    </div>
+                    <div style="font-size:0.78rem; color:${u.phoneVerified ? 'var(--success)' : 'var(--text-dim)'};">
+                      ${u.phoneVerified ? '✓ Phone Verified' : '✗ Phone Unverified'}
+                    </div>
                   </td>
                   <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(u.createdAt).toLocaleDateString()}</td>
-                  <td>
-                    <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.openUserDrawer('${u.id}')">
-                      Inspect
-                    </button>
+                  <td onclick="event.stopPropagation();">
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                      <button class="btn-secondary" style="padding: 5px 10px; font-size: 0.76rem;" title="Inspect Profile & Activities" onclick="window.openUserDrawer('${u.id}')">
+                        Activities
+                      </button>
+                      <button class="btn-secondary" style="padding: 5px 10px; font-size: 0.76rem;" title="Send Email or SMS" onclick="window.openCommunicationModal({ targetType: 'single', userIds: ['${u.id}'], userLabel: '${safeNameAttr} (${safeEmailAttr} / ${safePhoneAttr})' })">
+                        Email/SMS
+                      </button>
+                      <button class="btn-secondary" style="padding: 5px 10px; font-size: 0.76rem;" title="Download All User Transactions as PDF" onclick="window.downloadUserTransactionsPdf('${u.id}', '${safeNameAttr}', '${safeEmailAttr}', '${safePhoneAttr}')">
+                        PDF
+                      </button>
+                    </div>
                   </td>
                 </tr>
               `;
@@ -698,27 +907,54 @@
     `;
   }
 
+  window.toggleSelectAllUsers = function (checked) {
+    document.querySelectorAll('.user-select-cb').forEach(cb => {
+      const row = cb.closest('tr');
+      if (!row || row.style.display !== 'none') {
+        cb.checked = checked;
+      }
+    });
+  };
+
+  window.openSelectedUsersMessageModal = function () {
+    const selected = Array.from(document.querySelectorAll('.user-select-cb:checked'));
+    if (selected.length === 0) {
+      alert('Tick one or more users in the table first, or click "Broadcast to All / Group".');
+      return;
+    }
+    const ids = selected.map(cb => cb.value);
+    const names = selected.map(cb => cb.getAttribute('data-name')).slice(0, 5).join(', ') + (selected.length > 5 ? ` +${selected.length - 5} more` : '');
+    window.openCommunicationModal({
+      targetType: ids.length === 1 ? 'single' : 'group',
+      userIds: ids,
+      userLabel: `${ids.length} Selected User(s): ${names}`,
+    });
+  };
+
   window.filterUsersTable = function () {
     const search = document.getElementById('users-search')?.value.toLowerCase().trim() || '';
     const role = document.getElementById('users-role-filter')?.value || 'ALL';
+    const kyc = document.getElementById('users-kyc-filter')?.value || 'ALL';
     const rows = document.querySelectorAll('#users-table tbody tr');
 
     rows.forEach(r => {
       const rowRole = r.getAttribute('data-role');
+      const rowKyc = r.getAttribute('data-kyc');
       const rowSearch = (r.getAttribute('data-search') || '').toLowerCase();
       const matchesRole = role === 'ALL' || rowRole === role;
+      const matchesKyc = kyc === 'ALL' || rowKyc === kyc;
       const matchesSearch = !search || rowSearch.includes(search);
-      r.style.display = matchesRole && matchesSearch ? '' : 'none';
+      r.style.display = matchesRole && matchesKyc && matchesSearch ? '' : 'none';
     });
   };
 
-  // Open User Drawer with Real Live Profile and Wallet Data
+  // Open User Drawer with Real Live Profile, Activities Timeline, Grouped Transactions & PDF Export
   window.openUserDrawer = async function (userId) {
-    drawerTitle.textContent = `User Profile Inspection`;
+    drawerTitle.textContent = `User Profile & Activities`;
     drawerBody.innerHTML = `
       <div style="padding: 32px; text-align: center; color: var(--text-dim);">
         <span class="material-symbols-outlined" style="animation: spin 1s linear infinite;">sync</span>
-        <p style="margin-top: 8px;">Fetching customer records & balances...</p>
+        <p style="margin-top: 8px;">Fetching customer profile, activities &amp; transactions...</p>
       </div>
     `;
     drawerBackdrop.classList.add('active');
@@ -730,23 +966,52 @@
     }
 
     const d = res.data || {};
+    currentDrawerUserData = d;
     const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'User';
+    const fullEmail = d.contact?.email || d.contact?.emailMasked || '—';
+    const fullPhone = d.contact?.phone || d.contact?.phoneMasked || '—';
     const walletKobo = d.wallet?.balanceKobo ?? 0;
     const balanceNaira = (walletKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
     const fundingAccounts = d.fundingAccounts || [];
     const recentTx = d.recentTransactions || [];
+    const activities = d.activities || [];
+
+    // Group user's transactions by category/type
+    const txByType = {};
+    recentTx.forEach(t => {
+      const k = t.type || 'OTHER';
+      if (!txByType[k]) txByType[k] = { count: 0, totalKobo: 0 };
+      txByType[k].count++;
+      txByType[k].totalKobo += Number(t.amountKobo) || 0;
+    });
+
+    const safeNameAttr = fullName.replace(/'/g, "\\'");
+    const safeEmailAttr = fullEmail.replace(/'/g, "\\'");
+    const safePhoneAttr = fullPhone.replace(/'/g, "\\'");
 
     drawerTitle.textContent = fullName;
     drawerBody.innerHTML = `
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
+        <button class="btn-primary" style="width:auto; flex:1; padding:9px 14px; font-size:0.82rem;" onclick="window.openCommunicationModal({ targetType: 'single', userIds: ['${d.id}'], userLabel: '${safeNameAttr} (${safeEmailAttr} / ${safePhoneAttr})' })">
+          <span class="material-symbols-outlined" style="font-size:1.05rem;">send</span>
+          <span>Send Email / SMS</span>
+        </button>
+        <button class="btn-secondary" style="width:auto; flex:1; padding:9px 14px; font-size:0.82rem;" onclick="window.downloadUserTransactionsPdf('${d.id}', '${safeNameAttr}', '${safeEmailAttr}', '${safePhoneAttr}')">
+          <span class="material-symbols-outlined" style="font-size:1.05rem;">picture_as_pdf</span>
+          <span>Download All Tx (PDF)</span>
+        </button>
+      </div>
+
       <div class="drawer-section">
-        <div class="section-label">Account Overview</div>
+        <div class="section-label">Customer Identity &amp; Contact (Unredacted)</div>
         <div class="detail-row"><span>User ID</span><span><code>${d.id}</code></span></div>
-        <div class="detail-row"><span>Full Name</span><span>${fullName}</span></div>
-        <div class="detail-row"><span>Email</span><span>${d.contact?.email || d.contact?.emailMasked || '—'}</span></div>
-        <div class="detail-row"><span>Phone</span><span>${d.contact?.phone || d.contact?.phoneMasked || '—'}</span></div>
+        <div class="detail-row"><span>Full Name</span><span><strong>${fullName}</strong></span></div>
+        <div class="detail-row"><span>Email Address</span><span style="font-weight:600; color:var(--navy);">${fullEmail} (${d.contact?.emailVerified ? 'Verified' : 'Unverified'})</span></div>
+        <div class="detail-row"><span>Phone Number</span><span style="font-weight:600; font-family:monospace; color:var(--navy);">${fullPhone} (${d.contact?.phoneVerified ? 'Verified' : 'Unverified'})</span></div>
         <div class="detail-row"><span>KYC Status</span><span class="badge ${d.kyc?.status === 'APPROVED' ? 'badge-success' : 'badge-neutral'}">${d.kyc?.status || 'NONE'} (Tier ${d.kyc?.tier || 0})</span></div>
         <div class="detail-row"><span>Wallet Balance</span><span style="font-size:1.15rem; color:var(--navy); font-weight:700;">₦${balanceNaira}</span></div>
         <div class="detail-row"><span>Security Flags</span><span>${d.flags?.pinSet ? 'PIN Active' : 'No PIN'} • ${d.flags?.pinLocked ? '<strong style="color:var(--danger);">LOCKED</strong>' : 'Unlocked'}</span></div>
+        <div class="detail-row"><span>Joined Date</span><span>${new Date(d.createdAt).toLocaleString()}</span></div>
       </div>
 
       <div class="drawer-section">
@@ -768,13 +1033,62 @@
       </div>
 
       <div class="drawer-section">
-        <div class="section-label">Recent Customer Transactions</div>
+        <div class="section-label">User Activity Summary by Service Group</div>
+        ${Object.keys(txByType).length === 0 ? `
+          <div style="font-size:0.84rem; color:var(--text-dim);">No service activity yet.</div>
+        ` : `
+          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
+            ${Object.entries(txByType).map(([type, info]) => `
+              <div style="background:var(--bg-app); padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <div style="font-weight:700; font-size:0.78rem; color:var(--navy);">${type}</div>
+                  <div style="font-size:0.72rem; color:var(--text-dim);">${info.count} tx(s)</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-weight:700; font-size:0.84rem; color:var(--primary);">₦${(info.totalKobo / 100).toLocaleString('en-NG')}</div>
+                  <button class="btn-secondary" style="padding:2px 6px; font-size:0.68rem; margin-top:3px;" onclick="window.downloadCurrentDrawerUserGroupPdf('${type}')">PDF</button>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <div class="drawer-section">
+        <div class="section-label">Chronological User Activity Timeline (${activities.length})</div>
+        ${activities.length === 0 ? `
+          <div style="font-size: 0.85rem; color: var(--text-dim); background: var(--bg-app); padding: 12px; border-radius: var(--radius-sm);">
+            No activity events recorded.
+          </div>
+        ` : `
+          <div style="max-height: 260px; overflow-y: auto; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+            ${activities.map(act => `
+              <div style="background:var(--bg-app); padding:10px 12px; border-radius:var(--radius-sm); border-left:3px solid ${act.status === 'SUCCESS' || act.status === 'COMPLETED' || act.status === 'APPROVED' ? 'var(--primary)' : act.status === 'FAILED' || act.status === 'REJECTED' ? 'var(--danger)' : 'var(--warning)'};">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span style="font-weight:700; font-size:0.78rem; color:var(--navy);">${act.type} • ${act.action}</span>
+                  <span class="badge ${act.status === 'SUCCESS' || act.status === 'COMPLETED' || act.status === 'APPROVED' ? 'badge-success' : act.status === 'FAILED' || act.status === 'REJECTED' ? 'badge-danger' : 'badge-warning'}" style="font-size:0.68rem;">${act.status}</span>
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-main); margin-top:3px;">${act.description}</div>
+                <div style="font-size:0.72rem; color:var(--text-dim); margin-top:2px;">${new Date(act.createdAt).toLocaleString()}</div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
+
+      <div class="drawer-section">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div class="section-label" style="margin-bottom:0;">Customer Transactions (${recentTx.length})</div>
+          <button class="btn-secondary" style="padding:4px 10px; font-size:0.75rem;" onclick="window.downloadUserTransactionsPdf('${d.id}', '${safeNameAttr}', '${safeEmailAttr}', '${safePhoneAttr}')">
+            Export All (PDF)
+          </button>
+        </div>
         ${recentTx.length === 0 ? `
           <div style="font-size: 0.85rem; color: var(--text-dim); background: var(--bg-app); padding: 12px; border-radius: var(--radius-sm);">
             No transaction records.
           </div>
         ` : `
-          <table class="data-table" style="font-size:0.82rem;">
+          <table class="data-table" style="font-size:0.8rem;">
             <thead>
               <tr>
                 <th>Type</th>
@@ -785,11 +1099,11 @@
             </thead>
             <tbody>
               ${recentTx.map(t => `
-                <tr>
-                  <td><strong>${t.type}</strong></td>
-                  <td>₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG')}</td>
-                  <td><span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : 'badge-warning'}">${t.status}</span></td>
-                  <td style="color:var(--text-dim);">${new Date(t.createdAt).toLocaleDateString()}</td>
+                <tr class="clickable" onclick="window.inspectTx('${t.id}')">
+                  <td><strong>${t.type}</strong><div style="font-size:0.7rem; color:var(--text-dim);">${t.provider || 'wallet'}</div></td>
+                  <td>₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</td>
+                  <td><span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}">${t.status}</span></td>
+                  <td style="color:var(--text-dim);">${new Date(t.createdAt).toLocaleString()}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -799,97 +1113,569 @@
     `;
   };
 
+  window.downloadCurrentDrawerUserGroupPdf = function (type) {
+    if (!currentDrawerUserData) return;
+    const d = currentDrawerUserData;
+    const fullName = `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Customer';
+    const fullEmail = d.contact?.email || d.contact?.emailMasked || '—';
+    const fullPhone = d.contact?.phone || d.contact?.phoneMasked || '—';
+    const list = (d.recentTransactions || [])
+      .filter(t => t.type === type)
+      .map(t => ({ ...t, userName: fullName, userEmail: fullEmail, userPhone: fullPhone }));
+    window.downloadTransactionsPdf(
+      list,
+      `${fullName} — ${type} Transactions`,
+      `Email: ${fullEmail} | Phone: ${fullPhone}`
+    );
+  };
+
   // ==========================================
-  // 4. Transactions Screen
+  // 3B. Admin Email & SMS Broadcast Center
+  // ==========================================
+  async function renderMessaging(container) {
+    const res = await apiRequest('/admin/users?limit=100');
+    const users = (res.success && res.data && res.data.items) || cachedUsersList || [];
+    cachedUsersList = users;
+
+    container.innerHTML = `
+      <div class="table-card" style="padding: 24px; margin-bottom: 24px;">
+        <div style="margin-bottom: 20px;">
+          <h3 style="font-family:var(--font-heading); font-size:1.2rem; color:var(--navy);">
+            Send Email &amp; SMS Notifications (Single User, Group of Users, or All Users)
+          </h3>
+          <p style="font-size:0.84rem; color:var(--text-dim); margin-top:4px;">
+            Deliver transactional or operational messages via SMTP Email and/or Hollatags SMS. You can use <code>{firstName}</code> or <code>{name}</code> in your message to personalize emails.
+          </p>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:18px; margin-bottom:18px;">
+          <div class="form-field" style="margin-bottom:0;">
+            <label>Delivery Channels</label>
+            <div style="display:flex; gap:18px; padding:10px 14px; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm);">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; color:var(--navy);">
+                <input type="checkbox" id="comm-ch-email" checked />
+                <span>Email (SMTP)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600; color:var(--navy);">
+                <input type="checkbox" id="comm-ch-sms" checked />
+                <span>SMS (Hollatags)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-field" style="margin-bottom:0;">
+            <label>Recipient Target Audience</label>
+            <select id="comm-target-type" class="filter-select" style="width:100%; height:42px;" onchange="window.toggleCommTargetMode()">
+              <option value="single">Single User</option>
+              <option value="group">Group of Users (by Filter or Multi-Select)</option>
+              <option value="all">All Registered Users (${users.length})</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Single User Selector -->
+        <div id="comm-single-box" class="form-field">
+          <label>Select User</label>
+          <select id="comm-single-user" class="filter-select" style="width:100%; height:42px;">
+            ${users.map(u => {
+              const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User';
+              const email = u.email || u.emailMasked || '—';
+              const phone = u.phone || u.phoneMasked || 'No phone';
+              return `<option value="${u.id}">${name} — ${email} (${phone})</option>`;
+            }).join('')}
+          </select>
+        </div>
+
+        <!-- Group Selector -->
+        <div id="comm-group-box" class="form-field" style="display:none;">
+          <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:16px; margin-bottom:12px;">
+            <div>
+              <label>Filter Group by KYC Status</label>
+              <select id="comm-group-kyc" class="filter-select" style="width:100%; height:42px;">
+                <option value="ALL">Any KYC Status</option>
+                <option value="APPROVED">KYC Approved Users</option>
+                <option value="PENDING">KYC Pending Users</option>
+                <option value="NEEDS_REVIEW">KYC Needs Review Users</option>
+                <option value="UNVERIFIED">Unverified KYC Users</option>
+                <option value="REJECTED">Rejected KYC Users</option>
+              </select>
+            </div>
+            <div>
+              <label>Filter Group by Account Role</label>
+              <select id="comm-group-role" class="filter-select" style="width:100%; height:42px;">
+                <option value="ALL">Any Role</option>
+                <option value="USER">Regular Customers (USER)</option>
+                <option value="ADMIN">Administrators (ADMIN)</option>
+              </select>
+            </div>
+          </div>
+          <label>Or Hand-Pick Specific Users in Group (Optional — leave unchecked to use the filters above)</label>
+          <div style="max-height:180px; overflow-y:auto; border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; background:var(--bg-input); display:grid; grid-template-columns: repeat(2, 1fr); gap:8px;">
+            ${users.map(u => {
+              const name = `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'User';
+              const email = u.email || u.emailMasked || '—';
+              const phone = u.phone || u.phoneMasked || '';
+              return `
+                <label style="display:flex; align-items:center; gap:6px; font-size:0.8rem; cursor:pointer;">
+                  <input type="checkbox" class="comm-group-user-cb" value="${u.id}" />
+                  <span><strong>${name}</strong> (${email}${phone ? ' • ' + phone : ''})</span>
+                </label>
+              `;
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label>Email Subject (used when Email channel is active)</label>
+          <input type="text" id="comm-subject" value="Important Update from JemaBill" placeholder="Enter email subject..." style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px 12px; color:var(--text-main);" />
+        </div>
+
+        <div class="form-field">
+          <label>Message Body (Sent via selected channels)</label>
+          <textarea id="comm-message" class="reason-textarea" style="min-height:120px;" placeholder="Hello {firstName}, write your email / SMS message here..."></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end;">
+          <button class="btn-primary" id="comm-send-btn" style="width:auto; padding:12px 28px;" onclick="window.submitCommunicationForm()">
+            <span class="material-symbols-outlined">send</span>
+            <span>Dispatch Message Now</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  window.toggleCommTargetMode = function () {
+    const mode = document.getElementById('comm-target-type')?.value || 'single';
+    const singleBox = document.getElementById('comm-single-box');
+    const groupBox = document.getElementById('comm-group-box');
+    if (singleBox) singleBox.style.display = mode === 'single' ? '' : 'none';
+    if (groupBox) groupBox.style.display = mode === 'group' ? '' : 'none';
+  };
+
+  window.submitCommunicationForm = async function () {
+    const emailChecked = document.getElementById('comm-ch-email')?.checked;
+    const smsChecked = document.getElementById('comm-ch-sms')?.checked;
+    const channels = [];
+    if (emailChecked) channels.push('email');
+    if (smsChecked) channels.push('sms');
+
+    if (channels.length === 0) {
+      alert('Please select at least one delivery channel (Email or SMS).');
+      return;
+    }
+
+    const targetType = document.getElementById('comm-target-type')?.value || 'single';
+    const subject = document.getElementById('comm-subject')?.value?.trim() || 'Important Update from JemaBill';
+    const message = document.getElementById('comm-message')?.value?.trim() || '';
+
+    if (!message) {
+      alert('Please enter a message body.');
+      return;
+    }
+
+    let userIds = [];
+    let kycStatus = undefined;
+    let role = undefined;
+
+    if (targetType === 'single') {
+      const uid = document.getElementById('comm-single-user')?.value;
+      if (!uid) {
+        alert('Please select a user.');
+        return;
+      }
+      userIds = [uid];
+    } else if (targetType === 'group') {
+      userIds = Array.from(document.querySelectorAll('.comm-group-user-cb:checked')).map(cb => cb.value);
+      kycStatus = document.getElementById('comm-group-kyc')?.value;
+      role = document.getElementById('comm-group-role')?.value;
+    }
+
+    const btn = document.getElementById('comm-send-btn');
+    if (btn) btn.disabled = true;
+
+    const res = await apiRequest('/admin/communications/send', {
+      method: 'POST',
+      body: JSON.stringify({ channels, targetType, userIds, kycStatus, role, subject, message }),
+    });
+
+    if (btn) btn.disabled = false;
+
+    if (!res.success) {
+      alert(`Failed to send communication: ${res.error}`);
+      return;
+    }
+
+    const d = res.data || {};
+    showToast(`Sent to ${d.totalRecipients || 0} recipient(s) — Emails: ${d.sentEmails || 0}, SMS: ${d.sentSms || 0}`);
+    const msgInput = document.getElementById('comm-message');
+    if (msgInput) msgInput.value = '';
+  };
+
+  window.openCommunicationModal = function (preset = {}) {
+    const targetType = preset.targetType || 'single';
+    const userIds = preset.userIds || [];
+    const userLabel = preset.userLabel || (targetType === 'all' ? 'All Registered Users' : 'Selected Group');
+
+    modalTitle.textContent = `Send Email & SMS Notification`;
+    modalBody.innerHTML = `
+      <div style="background:var(--bg-app); padding:12px 14px; border-radius:var(--radius-sm); border:1px solid var(--border-color); margin-bottom:14px;">
+        <div style="font-size:0.75rem; color:var(--text-dim); text-transform:uppercase; font-weight:700;">Target Audience (${targetType.toUpperCase()})</div>
+        <div style="font-size:0.9rem; font-weight:600; color:var(--navy); margin-top:2px;">${userLabel}</div>
+      </div>
+
+      <div class="form-field">
+        <label>Channels</label>
+        <div style="display:flex; gap:16px;">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
+            <input type="checkbox" id="modal-comm-email" checked /> Email (SMTP)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:600;">
+            <input type="checkbox" id="modal-comm-sms" checked /> SMS (Hollatags)
+          </label>
+        </div>
+      </div>
+
+      ${userIds.length === 0 ? `
+        <div class="form-field">
+          <label>Target Group Filter</label>
+          <select id="modal-comm-kyc" class="filter-select" style="width:100%; height:40px;">
+            <option value="ALL">All Users (Any KYC Status)</option>
+            <option value="APPROVED">Only KYC Approved Users</option>
+            <option value="UNVERIFIED">Only Unverified KYC Users</option>
+            <option value="PENDING">Only KYC Pending Users</option>
+          </select>
+        </div>
+      ` : ''}
+
+      <div class="form-field">
+        <label>Email Subject</label>
+        <input type="text" id="modal-comm-subject" value="Important Update from JemaBill" style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);" />
+      </div>
+
+      <div class="form-field">
+        <label>Message Body (Supports <code>{firstName}</code> placeholder)</label>
+        <textarea id="modal-comm-message" class="reason-textarea" style="min-height:110px;" placeholder="Type your email and/or SMS message here..."></textarea>
+      </div>
+    `;
+
+    window._pendingModalComm = { targetType, userIds };
+
+    modalFooter.innerHTML = `
+      <button class="btn-secondary" onclick="window.closeModal()">Cancel</button>
+      <button class="btn-primary" style="width:auto;" onclick="window.sendModalCommunication()">
+        <span class="material-symbols-outlined">send</span>
+        <span>Send Message</span>
+      </button>
+    `;
+    modalBackdrop.classList.add('active');
+  };
+
+  window.sendModalCommunication = async function () {
+    const pending = window._pendingModalComm || { targetType: 'all', userIds: [] };
+    const emailChecked = document.getElementById('modal-comm-email')?.checked;
+    const smsChecked = document.getElementById('modal-comm-sms')?.checked;
+    const channels = [];
+    if (emailChecked) channels.push('email');
+    if (smsChecked) channels.push('sms');
+    if (channels.length === 0) {
+      alert('Select at least one channel (Email or SMS).');
+      return;
+    }
+
+    const subject = document.getElementById('modal-comm-subject')?.value?.trim() || 'Important Update from JemaBill';
+    const message = document.getElementById('modal-comm-message')?.value?.trim() || '';
+    if (!message) {
+      alert('Enter a message body.');
+      return;
+    }
+
+    const kycEl = document.getElementById('modal-comm-kyc');
+    const kycStatus = kycEl ? kycEl.value : undefined;
+    const effectiveTarget = pending.userIds.length > 0
+      ? pending.targetType
+      : (kycStatus && kycStatus !== 'ALL' ? 'group' : 'all');
+
+    const res = await apiRequest('/admin/communications/send', {
+      method: 'POST',
+      body: JSON.stringify({
+        channels,
+        targetType: effectiveTarget,
+        userIds: pending.userIds,
+        kycStatus,
+        subject,
+        message,
+      }),
+    });
+
+    if (!res.success) {
+      alert(`Failed to send: ${res.error}`);
+      return;
+    }
+
+    closeModal();
+    const d = res.data || {};
+    showToast(`Dispatched to ${d.totalRecipients || 0} user(s) — Emails: ${d.sentEmails || 0}, SMS: ${d.sentSms || 0}`);
+  };
+
+  // ==========================================
+  // 4. Transactions Screen (With Grouping & PDF Download)
   // ==========================================
   async function renderTransactions(container) {
-    const res = await apiRequest('/admin/transactions');
+    const res = await apiRequest('/admin/transactions?all=true&limit=300');
     if (!res.success) {
       container.innerHTML = renderErrorAlert(res.error, () => renderTransactions(container));
       return;
     }
 
     const txs = (res.data && res.data.items) || [];
+    cachedAllTransactions = txs;
 
     container.innerHTML = `
-      <div class="toolbar">
+      <div class="toolbar" style="flex-wrap:wrap; gap:12px;">
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
-          <input type="text" id="tx-search" placeholder="Search by ID, user, provider..." oninput="window.filterTxTable()" />
+          <input type="text" id="tx-search" placeholder="Search by ID, email, phone, name, provider..." oninput="window.refreshTransactionsView()" />
         </div>
-        <div class="filters-group">
-          <select class="filter-select" id="tx-status-filter" onchange="window.filterTxTable()">
+        <div class="filters-group" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+          <select class="filter-select" id="tx-group-by" onchange="window.refreshTransactionsView()">
+            <option value="NONE">Group By: None (All List)</option>
+            <option value="TYPE">Group By: Service / Type</option>
+            <option value="USER">Group By: Customer / User</option>
+            <option value="STATUS">Group By: Status</option>
+            <option value="PROVIDER">Group By: Provider</option>
+            <option value="DATE">Group By: Date</option>
+          </select>
+
+          <select class="filter-select" id="tx-status-filter" onchange="window.refreshTransactionsView()">
             <option value="ALL">All Statuses</option>
             <option value="SUCCESS">Success</option>
             <option value="PENDING">Pending</option>
             <option value="FAILED">Failed</option>
+            <option value="REVIEW">Needs Review</option>
           </select>
+
+          <select class="filter-select" id="tx-type-filter" onchange="window.refreshTransactionsView()">
+            <option value="ALL">All Categories</option>
+            <option value="ELECTRICITY">Electricity</option>
+            <option value="DATA">Data Bundle</option>
+            <option value="AIRTIME">Airtime</option>
+            <option value="CABLE_TV">Cable TV</option>
+            <option value="EXAM_PIN">Exam PIN</option>
+            <option value="BANK_TRANSFER">Bank Transfer</option>
+            <option value="WALLET_FUNDING">Wallet Funding</option>
+            <option value="BETTING_FUNDING">Betting Funding</option>
+            <option value="BULK_SMS">Bulk SMS</option>
+          </select>
+
+          <button class="btn-secondary" style="width:auto; padding:8px 14px; font-size:0.8rem;" onclick="window.downloadSelectedTxPdf()">
+            <span class="material-symbols-outlined" style="font-size:1.05rem;">checklist</span>
+            <span>Download Selected (PDF)</span>
+          </button>
+
+          <button class="btn-primary" style="width:auto; padding:8px 16px; font-size:0.8rem;" onclick="window.downloadFilteredTxPdf()">
+            <span class="material-symbols-outlined" style="font-size:1.05rem;">picture_as_pdf</span>
+            <span>Download Filtered Group (PDF)</span>
+          </button>
         </div>
       </div>
 
-      <div class="table-card">
-        <table class="data-table" id="tx-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Type</th>
-              <th>User</th>
-              <th>Amount</th>
-              <th>Fee</th>
-              <th>Provider</th>
-              <th>Status</th>
-              <th>Date</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${txs.length === 0 ? `
-              <tr>
-                <td colspan="9" style="text-align: center; padding: 48px; color: var(--text-dim);">
-                  No transactions recorded yet.
-                </td>
-              </tr>
-            ` : txs.map(t => `
-              <tr class="clickable" data-status="${t.status}" data-search="${t.id + ' ' + (t.userEmail || t.userEmailMasked || '') + ' ' + (t.provider || '')}" onclick="window.inspectTx('${t.id}')">
-                <td><code>${t.id.slice(0, 8)}...</code></td>
-                <td><strong>${t.type}</strong></td>
-                <td>${t.userEmail || t.userEmailMasked || '—'}</td>
-                <td><strong style="color:var(--navy);">₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
-                <td>₦${((t.feeKobo || 0) / 100).toFixed(2)}</td>
-                <td><span class="badge badge-neutral">${t.provider || 'internal'}</span></td>
-                <td>
-                  <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}">
-                    ${t.status}
-                  </span>
-                  ${t.needsReview ? '<span class="badge badge-danger" style="margin-left:4px;">REVIEW</span>' : ''}
-                </td>
-                <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(t.updatedAt || t.createdAt).toLocaleDateString()}</td>
-                <td>
-                  <button class="btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="event.stopPropagation(); window.inspectTx('${t.id}')">
-                    Inspect
-                  </button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
+      <div id="tx-groups-container"></div>
     `;
+
+    window.refreshTransactionsView();
   }
 
-  window.filterTxTable = function () {
+  function getFilteredTransactions() {
     const search = document.getElementById('tx-search')?.value.toLowerCase().trim() || '';
     const status = document.getElementById('tx-status-filter')?.value || 'ALL';
-    const rows = document.querySelectorAll('#tx-table tbody tr');
+    const type = document.getElementById('tx-type-filter')?.value || 'ALL';
 
-    rows.forEach(r => {
-      const rowStatus = r.getAttribute('data-status');
-      const rowSearch = (r.getAttribute('data-search') || '').toLowerCase();
-      const matchesStatus = status === 'ALL' || rowStatus === status;
-      const matchesSearch = !search || rowSearch.includes(search);
-      r.style.display = matchesStatus && matchesSearch ? '' : 'none';
+    return cachedAllTransactions.filter(t => {
+      const matchesStatus =
+        status === 'ALL' ||
+        (status === 'REVIEW' ? Boolean(t.needsReview) : t.status === status);
+      const matchesType = type === 'ALL' || t.type === type;
+      const haystack = [
+        t.id,
+        t.type,
+        t.userName,
+        t.userEmail,
+        t.userEmailMasked,
+        t.userPhone,
+        t.provider,
+        t.externalReference,
+        t.providerReference,
+        t.failureReason,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      const matchesSearch = !search || haystack.includes(search);
+      return matchesStatus && matchesType && matchesSearch;
+    });
+  }
+
+  window.refreshTransactionsView = function () {
+    const holder = document.getElementById('tx-groups-container');
+    if (!holder) return;
+
+    const groupBy = document.getElementById('tx-group-by')?.value || 'NONE';
+    const filtered = getFilteredTransactions();
+
+    if (filtered.length === 0) {
+      holder.innerHTML = `
+        <div class="table-card" style="padding: 48px; text-align: center; color: var(--text-dim);">
+          No transactions match your current filter criteria.
+        </div>
+      `;
+      return;
+    }
+
+    const groupsMap = new Map();
+    filtered.forEach(t => {
+      let key = 'All Transactions';
+      let label = 'All Matching Transactions';
+      if (groupBy === 'TYPE') {
+        key = t.type || 'OTHER';
+        label = `Service Category: ${key}`;
+      } else if (groupBy === 'USER') {
+        key = t.userId || t.userEmail || 'Unknown';
+        const customerDesc = [t.userName, t.userEmail || t.userEmailMasked, t.userPhone].filter(Boolean).join(' • ') || key;
+        label = `Customer: ${customerDesc}`;
+      } else if (groupBy === 'STATUS') {
+        key = t.status + (t.needsReview ? '_REVIEW' : '');
+        label = `Status: ${t.status}${t.needsReview ? ' (Needs Review)' : ''}`;
+      } else if (groupBy === 'PROVIDER') {
+        key = t.provider || 'internal';
+        label = `Provider: ${key.toUpperCase()}`;
+      } else if (groupBy === 'DATE') {
+        key = new Date(t.createdAt || t.updatedAt || Date.now()).toLocaleDateString();
+        label = `Date: ${key}`;
+      }
+      if (!groupsMap.has(key)) {
+        groupsMap.set(key, { key, label, items: [], totalKobo: 0 });
+      }
+      const g = groupsMap.get(key);
+      g.items.push(t);
+      g.totalKobo += Number(t.amountKobo) || 0;
+    });
+
+    window._currentTxGroups = Object.fromEntries(groupsMap.entries());
+
+    holder.innerHTML = Array.from(groupsMap.values())
+      .map((g, gIdx) => {
+        const totalNaira = (g.totalKobo / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 });
+        const safeKeyAttr = String(g.key).replace(/'/g, "\\'");
+        return `
+          <div class="table-card" style="margin-bottom: 20px;">
+            <div style="padding: 14px 20px; background: #FAFBFA; border-bottom: 1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <h3 style="font-family:var(--font-heading); font-size:1.02rem; color:var(--navy);">${g.label}</h3>
+                <span style="font-size:0.78rem; color:var(--text-dim);">
+                  <strong>${g.items.length}</strong> transaction(s) • Total Volume: <strong style="color:var(--primary);">₦${totalNaira}</strong>
+                </span>
+              </div>
+              <button class="btn-secondary" style="padding: 6px 14px; font-size: 0.78rem;" onclick="window.downloadTxGroupKeyPdf('${safeKeyAttr}')">
+                <span class="material-symbols-outlined" style="font-size:1rem;">picture_as_pdf</span>
+                <span>Download Group PDF (${g.items.length})</span>
+              </button>
+            </div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:34px;">
+                    <input type="checkbox" onchange="window.toggleTxGroupCheckboxes(${gIdx}, this.checked)" />
+                  </th>
+                  <th>ID</th>
+                  <th>Type</th>
+                  <th>Customer (Email &amp; Phone)</th>
+                  <th>Amount</th>
+                  <th>Fee</th>
+                  <th>Provider</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${g.items.map(t => {
+                  const email = t.userEmail || t.userEmailMasked || '—';
+                  const phone = t.userPhone || '';
+                  const name = t.userName || '';
+                  return `
+                    <tr class="clickable" onclick="window.inspectTx('${t.id}')">
+                      <td onclick="event.stopPropagation();">
+                        <input type="checkbox" class="tx-select-cb tx-group-cb-${gIdx}" value="${t.id}" />
+                      </td>
+                      <td><code>${t.id.slice(0, 8)}...</code></td>
+                      <td><strong>${t.type}</strong></td>
+                      <td>
+                        ${name ? `<div style="font-weight:600; color:var(--navy);">${name}</div>` : ''}
+                        <div style="font-size:0.82rem; color:var(--navy);">${email}</div>
+                        ${phone ? `<div style="font-size:0.76rem; color:var(--text-dim); font-family:monospace;">${phone}</div>` : ''}
+                      </td>
+                      <td><strong style="color:var(--navy);">₦${((t.amountKobo || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong></td>
+                      <td>₦${((t.feeKobo || 0) / 100).toFixed(2)}</td>
+                      <td><span class="badge badge-neutral">${t.provider || 'internal'}</span></td>
+                      <td>
+                        <span class="badge ${t.status === 'SUCCESS' ? 'badge-success' : t.status === 'FAILED' ? 'badge-danger' : 'badge-warning'}">
+                          ${t.status}
+                        </span>
+                        ${t.needsReview ? '<span class="badge badge-danger" style="margin-left:4px;">REVIEW</span>' : ''}
+                      </td>
+                      <td style="color:var(--text-muted); font-size:0.8rem;">${new Date(t.createdAt || t.updatedAt).toLocaleString()}</td>
+                      <td onclick="event.stopPropagation();">
+                        <button class="btn-secondary" style="padding: 5px 10px; font-size: 0.76rem;" onclick="window.inspectTx('${t.id}')">
+                          Inspect
+                        </button>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join('');
+  };
+
+  window.toggleTxGroupCheckboxes = function (groupIdx, checked) {
+    document.querySelectorAll(`.tx-group-cb-${groupIdx}`).forEach(cb => {
+      cb.checked = checked;
     });
   };
+
+  window.downloadTxGroupKeyPdf = function (key) {
+    const g = window._currentTxGroups && window._currentTxGroups[key];
+    if (!g || !g.items.length) return;
+    window.downloadTransactionsPdf(g.items, `Transaction Group Report — ${g.label}`, `Group Key: ${key} | Total Records: ${g.items.length}`);
+  };
+
+  window.downloadFilteredTxPdf = function () {
+    const filtered = getFilteredTransactions();
+    const groupBy = document.getElementById('tx-group-by')?.value || 'NONE';
+    const status = document.getElementById('tx-status-filter')?.value || 'ALL';
+    const type = document.getElementById('tx-type-filter')?.value || 'ALL';
+    window.downloadTransactionsPdf(
+      filtered,
+      `JemaBill Filtered Transactions Report`,
+      `Status Filter: ${status} | Category Filter: ${type} | Grouped By: ${groupBy}`
+    );
+  };
+
+  window.downloadSelectedTxPdf = function () {
+    const checkedIds = new Set(Array.from(document.querySelectorAll('.tx-select-cb:checked')).map(cb => cb.value));
+    if (checkedIds.size === 0) {
+      alert('Tick one or more transactions in the table first, or click "Download Filtered Group (PDF)".');
+      return;
+    }
+    const selected = cachedAllTransactions.filter(t => checkedIds.has(t.id));
+    window.downloadTransactionsPdf(selected, `JemaBill Selected Transactions Report (${selected.length} items)`);
+  };
+
+  window.filterTxTable = window.refreshTransactionsView;
 
   // Inspect Transaction Details with Live History Audit Trail
   window.inspectTx = async function (txId) {
