@@ -1003,14 +1003,19 @@
   // 5. Funding & Absorbed Fees Screen
   // ==========================================
   async function renderFunding(container) {
-    const [depRes, summaryRes] = await Promise.all([
+    const [depRes, summaryRes, settingsRes] = await Promise.all([
       apiRequest('/admin/funding/deposits'),
-      apiRequest('/admin/funding/fees-summary')
+      apiRequest('/admin/funding/fees-summary'),
+      apiRequest('/admin/settings')
     ]);
 
     if (!depRes.success) {
       container.innerHTML = renderErrorAlert(depRes.error, () => renderFunding(container));
       return;
+    }
+
+    if (settingsRes && settingsRes.success) {
+      cachedSettings = normalizeSettingsData(settingsRes.data);
     }
 
     const deposits = (depRes.data && depRes.data.items) || [];
@@ -1019,6 +1024,8 @@
     const totalDeposits = summary.totalDepositCount || deposits.length;
 
     container.innerHTML = `
+      ${renderBillFeesConfiguratorHtml(cachedSettings, 'funding')}
+
       <div class="kpi-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 24px;">
         <div class="kpi-card">
           <span class="kpi-label">Total Absorbed Fees</span>
@@ -1160,6 +1167,190 @@
     return [];
   }
 
+  function renderBillFeesConfiguratorHtml(settingsList, viewName = 'settings') {
+    const getSettingVal = (key, fallback = null) => {
+      const found = (settingsList || []).find(s => s.key === key);
+      return found && found.value !== null && found.value !== undefined ? found.value : fallback;
+    };
+
+    const currentPct = parseFloat(getSettingVal('fees.bills.percent', 0)) || 0;
+    const currentMaxKobo = parseInt(getSettingVal('fees.bills.maxKobo', 10000), 10) || 10000;
+    const currentMinKobo = parseInt(getSettingVal('fees.bills.minKobo', 0), 10) || 0;
+
+    const currentMaxNaira = (currentMaxKobo / 100).toFixed(0);
+    const currentMinNaira = currentMinKobo > 0 ? (currentMinKobo / 100).toFixed(0) : '0';
+
+    const sampleAmount = 5000;
+    const rawSampleFee = currentPct > 0 ? (sampleAmount * currentPct) / 100 : 0;
+    const sampleFee = currentPct > 0
+      ? Math.min(Math.max(rawSampleFee, currentMinKobo / 100), currentMaxKobo / 100)
+      : 0;
+
+    return `
+      <div class="table-card" style="margin-bottom: 24px; padding: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:16px;">
+          <div>
+            <h3 style="font-family:var(--font-heading); font-size:1.15rem; color:var(--navy);">
+              Bill Payment Rate &amp; Ceiling (All Bills Except Data &amp; Airtime)
+            </h3>
+            <p style="font-size:0.82rem; color:var(--text-dim); margin-top:4px;">
+              Set the percentage surcharge and maximum fee ceiling applied to Electricity, Cable TV, Exam PINs (WAEC/NECO/NABTEB), JAMB, Betting, Insurance, and other bills. <strong>Data &amp; Airtime remain 0% exempt.</strong>
+            </p>
+          </div>
+          <span class="badge ${currentPct > 0 ? 'badge-info' : 'badge-neutral'}">
+            ${currentPct > 0 ? `Active: ${currentPct}% (Cap ₦${Number(currentMaxNaira).toLocaleString()})` : '0% (No Bill Fee)'}
+          </span>
+        </div>
+
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:16px;">
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">
+              Bill Rate Percentage (%) <span style="color:var(--text-dim); font-weight:400;">(0 – 10%)</span>
+            </label>
+            <input
+              type="number"
+              id="bills-fee-percent"
+              step="0.05"
+              min="0"
+              max="10"
+              value="${currentPct}"
+              oninput="window.updateBillFeePreview()"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main); font-weight:600;"
+            />
+          </div>
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">
+              Fee Ceiling / Maximum Cap (₦)
+            </label>
+            <input
+              type="number"
+              id="bills-fee-max-naira"
+              step="10"
+              min="1"
+              value="${currentMaxNaira}"
+              oninput="window.updateBillFeePreview()"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main); font-weight:600;"
+            />
+          </div>
+          <div>
+            <label style="font-size:0.8rem; color:var(--navy); font-weight:600; display:block; margin-bottom:6px;">
+              Minimum Fee Floor (₦) <span style="color:var(--text-dim); font-weight:400;">(0 = None)</span>
+            </label>
+            <input
+              type="number"
+              id="bills-fee-min-naira"
+              step="5"
+              min="0"
+              value="${currentMinNaira}"
+              oninput="window.updateBillFeePreview()"
+              style="width:100%; background:var(--bg-input); border:1.5px solid var(--border-color); border-radius:var(--radius-sm); padding:10px; color:var(--text-main);"
+            />
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding-top:12px; border-top:1px solid var(--border-color);">
+          <div id="bills-fee-preview" style="font-size:0.82rem; color:var(--text-muted);">
+            Sample ₦5,000 Electricity/TV bill → Fee: <strong style="color:var(--navy);">₦${sampleFee.toFixed(2)}</strong> (Total charged: <strong>₦${(sampleAmount + sampleFee).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong>)
+          </div>
+          <button class="btn-primary" style="width:auto; padding:10px 22px;" onclick="window.saveBillFeesConfig('${viewName}')">
+            <span class="material-symbols-outlined" style="font-size:1.1rem;">save</span>
+            <span>Save Bill Rate &amp; Ceiling</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  window.updateBillFeePreview = function () {
+    const pct = parseFloat(document.getElementById('bills-fee-percent')?.value) || 0;
+    const maxNaira = parseFloat(document.getElementById('bills-fee-max-naira')?.value) || 0;
+    const minNaira = parseFloat(document.getElementById('bills-fee-min-naira')?.value) || 0;
+    const previewEl = document.getElementById('bills-fee-preview');
+    if (!previewEl) return;
+
+    const sampleAmount = 5000;
+    let fee = 0;
+    if (pct > 0 && maxNaira > 0) {
+      const raw = (sampleAmount * pct) / 100;
+      fee = Math.min(Math.max(raw, minNaira), maxNaira);
+    }
+    previewEl.innerHTML = `Sample ₦5,000 Electricity/TV bill → Fee: <strong style="color:var(--navy);">₦${fee.toFixed(2)}</strong> (Total charged: <strong>₦${(sampleAmount + fee).toLocaleString('en-NG', { minimumFractionDigits: 2 })}</strong>)`;
+  };
+
+  window.saveBillFeesConfig = async function (viewName = 'settings') {
+    const pctRaw = document.getElementById('bills-fee-percent')?.value;
+    const maxNairaRaw = document.getElementById('bills-fee-max-naira')?.value;
+    const minNairaRaw = document.getElementById('bills-fee-min-naira')?.value;
+
+    const pct = Math.round((parseFloat(pctRaw) || 0) * 100) / 100;
+    const maxNaira = parseFloat(maxNairaRaw) || 0;
+    const minNaira = parseFloat(minNairaRaw) || 0;
+
+    if (pct < 0 || pct > 10) {
+      alert('Bill fee percentage must be between 0% and 10%.');
+      return;
+    }
+    if (pct > 0 && maxNaira < 1) {
+      alert('A fee ceiling of at least ₦1 is required whenever the percentage is above 0%.');
+      return;
+    }
+    if (minNaira > 0 && maxNaira > 0 && minNaira > maxNaira) {
+      alert('Minimum fee floor cannot exceed the maximum fee ceiling.');
+      return;
+    }
+
+    const reason = prompt(
+      'Operational justification for bill fee modification (min 8 chars):',
+      'Updated bill payment fee percentage and ceiling via Admin Panel'
+    );
+    if (!reason || reason.trim().length < 8) {
+      alert('Updating financial settings requires an operational audit reason of at least 8 characters.');
+      return;
+    }
+
+    const maxKobo = Math.round(maxNaira * 100);
+    const minKobo = Math.round(minNaira * 100);
+
+    // Order matters: maxKobo must be set before percent > 0
+    if (maxKobo >= 100) {
+      const resMax = await apiRequest('/admin/settings/fees.bills.maxKobo', {
+        method: 'PUT',
+        body: JSON.stringify({ value: maxKobo, reason: reason.trim(), confirm: true })
+      });
+      if (!resMax.success) {
+        alert(`Failed to update fee ceiling: ${resMax.error}`);
+        return;
+      }
+    }
+
+    if (minKobo >= 100) {
+      const resMin = await apiRequest('/admin/settings/fees.bills.minKobo', {
+        method: 'PUT',
+        body: JSON.stringify({ value: minKobo, reason: reason.trim(), confirm: true })
+      });
+      if (!resMin.success) {
+        alert(`Failed to update fee floor: ${resMin.error}`);
+        return;
+      }
+    } else {
+      await apiRequest(`/admin/settings/fees.bills.minKobo?confirm=true&reason=${encodeURIComponent(reason.trim())}`, {
+        method: 'DELETE'
+      });
+    }
+
+    const resPct = await apiRequest('/admin/settings/fees.bills.percent', {
+      method: 'PUT',
+      body: JSON.stringify({ value: pct, reason: reason.trim(), confirm: true })
+    });
+    if (!resPct.success) {
+      alert(`Failed to update bill rate percentage: ${resPct.error}`);
+      return;
+    }
+
+    showToast(`Bill fee updated: ${pct}% capped at ₦${maxNaira.toLocaleString()}`);
+    renderView(viewName);
+  };
+
   async function renderSettings(container) {
     const res = await apiRequest('/admin/settings');
     if (!res.success) {
@@ -1171,6 +1362,8 @@
     cachedSettings = normalizeSettingsData(res.data);
 
     container.innerHTML = `
+      ${renderBillFeesConfiguratorHtml(cachedSettings, 'settings')}
+
       <div class="toolbar">
         <div class="search-box">
           <span class="material-symbols-outlined">search</span>
@@ -1288,7 +1481,7 @@
     // Auto-parse boolean if string is true/false
     if (newVal === 'true') newVal = true;
     else if (newVal === 'false') newVal = false;
-    else if (/^\d+$/.test(newVal)) newVal = parseInt(newVal, 10);
+    else if (/^\d+(\.\d+)?$/.test(newVal)) newVal = parseFloat(newVal);
 
     const res = await apiRequest(`/admin/settings/${key}`, {
       method: 'PUT',
