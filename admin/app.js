@@ -1291,6 +1291,85 @@
     if (groupBox) groupBox.style.display = mode === 'group' ? '' : 'none';
   };
 
+
+  // Shared dispatcher: dry-run preview -> explicit confirmation -> queue -> live delivery status.
+  async function dispatchCommunication(payload) {
+    const pv = await apiRequest('/admin/communications/preview', { method: 'POST', body: JSON.stringify(payload) });
+    if (!pv.success) {
+      alert(`Cannot send: ${pv.error}`);
+      return false;
+    }
+    const p = pv.data;
+    const summary =
+      `You are about to message ${p.totalRecipients} user(s).\n` +
+      `Email recipients: ${p.emailRecipients}   SMS recipients: ${p.smsRecipients}\n\n` +
+      `Sample (for one recipient):\n${p.sample.body.slice(0, 300)}`;
+    let confirmRecipients;
+    if (p.requiresConfirmation) {
+      const typed = prompt(`${summary}\n\nThis is a large send. Type ${p.totalRecipients} to confirm:`);
+      if (typed === null) return false;
+      if (Number(typed.trim()) !== p.totalRecipients) {
+        alert('Confirmation did not match the recipient count. Nothing was sent.');
+        return false;
+      }
+      confirmRecipients = p.totalRecipients;
+    } else if (!confirm(`${summary}\n\nSend now?`)) {
+      return false;
+    }
+    const res = await apiRequest('/admin/communications/send', { method: 'POST', body: JSON.stringify({ ...payload, confirmRecipients }) });
+    if (!res.success) {
+      alert(`Failed to send: ${res.error}`);
+      return false;
+    }
+    showToast(`Queued for ${res.data.totalRecipients} recipient(s). Tracking delivery...`);
+    window.showCommunicationStatus(res.data.id);
+    return true;
+  }
+
+  window.showCommunicationStatus = async function (id) {
+    modalTitle.textContent = 'Message delivery status';
+    modalFooter.innerHTML = `<button class="btn-secondary" onclick="window.closeModal()">Close</button>`;
+    modalBackdrop.classList.add('active');
+    let stop = false;
+    modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) stop = true; });
+    const pollOnce = async () => {
+      const res = await apiRequest(`/admin/communications/${id}?limit=500`);
+      if (!res.success) {
+        modalBody.innerHTML = `<p style="color:var(--text-muted);">Could not load status: ${res.error}</p>`;
+        return true;
+      }
+      const { communication: c, counts, deliveries } = res.data;
+      const row = (ch) => {
+        const m = counts[ch];
+        if (!m) return '';
+        const cell = (k) => `<td style="padding:6px 10px;">${m[k] || 0}</td>`;
+        return `<tr><td style="padding:6px 10px; font-weight:700;">${ch.toUpperCase()}</td>${cell('PENDING')}${cell('SENDING')}${cell('SENT')}${cell('FAILED')}${cell('SKIPPED')}</tr>`;
+      };
+      const failed = deliveries.filter((d) => d.status === 'FAILED' || d.status === 'SKIPPED').slice(0, 50);
+      modalBody.innerHTML = `
+        <div style="margin-bottom:10px;">Status: <strong>${c.status}</strong> &middot; ${c.totalRecipients} recipient(s)</div>
+        <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+          <thead><tr style="text-align:left; border-bottom:1px solid var(--border-color);"><th style="padding:6px 10px;">Channel</th><th>Pending</th><th>Sending</th><th>Sent</th><th>Failed</th><th>Skipped</th></tr></thead>
+          <tbody>${row('email')}${row('sms')}</tbody>
+        </table>
+        ${failed.length ? `<div class="section-label" style="margin-top:14px;">Not delivered (first ${failed.length})</div>
+          <div style="max-height:160px; overflow:auto; font-size:0.78rem;">${failed.map((d) => `<div>${d.channel.toUpperCase()} &middot; ${d.userId.slice(0, 8)} &middot; ${d.status} &middot; ${d.error || ''}</div>`).join('')}</div>` : ''}
+        ${c.status === 'QUEUED' || c.status === 'SENDING' ? `<div style="margin-top:12px;"><button class="btn-secondary" onclick="window.cancelCommunication('${c.id}')">Cancel remaining</button></div>` : ''}
+      `;
+      return c.status === 'DONE' || c.status === 'CANCELLED';
+    };
+    for (let i = 0; i < 60 && !stop; i++) {
+      if (await pollOnce()) break;
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  };
+
+  window.cancelCommunication = async function (id) {
+    const res = await apiRequest(`/admin/communications/${id}/cancel`, { method: 'POST', body: '{}' });
+    if (!res.success) alert(`Could not cancel: ${res.error}`);
+    else showToast('Remaining messages cancelled.');
+  };
+
   window.submitCommunicationForm = async function () {
     const emailChecked = document.getElementById('comm-ch-email')?.checked;
     const smsChecked = document.getElementById('comm-ch-sms')?.checked;
@@ -1331,23 +1410,12 @@
 
     const btn = document.getElementById('comm-send-btn');
     if (btn) btn.disabled = true;
-
-    const res = await apiRequest('/admin/communications/send', {
-      method: 'POST',
-      body: JSON.stringify({ channels, targetType, userIds, kycStatus, role, subject, message }),
-    });
-
+    const sent = await dispatchCommunication({ channels, targetType, userIds, kycStatus, role, subject, message });
     if (btn) btn.disabled = false;
-
-    if (!res.success) {
-      alert(`Failed to send communication: ${res.error}`);
-      return;
+    if (sent) {
+      const msgInput = document.getElementById('comm-message');
+      if (msgInput) msgInput.value = '';
     }
-
-    const d = res.data || {};
-    showToast(`Sent to ${d.totalRecipients || 0} recipient(s) — Emails: ${d.sentEmails || 0}, SMS: ${d.sentSms || 0}`);
-    const msgInput = document.getElementById('comm-message');
-    if (msgInput) msgInput.value = '';
   };
 
   window.openCommunicationModal = function (preset = {}) {
@@ -1434,26 +1502,15 @@
       ? pending.targetType
       : (kycStatus && kycStatus !== 'ALL' ? 'group' : 'all');
 
-    const res = await apiRequest('/admin/communications/send', {
-      method: 'POST',
-      body: JSON.stringify({
-        channels,
-        targetType: effectiveTarget,
-        userIds: pending.userIds,
-        kycStatus,
-        subject,
-        message,
-      }),
+    const sent = await dispatchCommunication({
+      channels,
+      targetType: effectiveTarget,
+      userIds: pending.userIds,
+      kycStatus,
+      subject,
+      message,
     });
-
-    if (!res.success) {
-      alert(`Failed to send: ${res.error}`);
-      return;
-    }
-
-    closeModal();
-    const d = res.data || {};
-    showToast(`Dispatched to ${d.totalRecipients || 0} user(s) — Emails: ${d.sentEmails || 0}, SMS: ${d.sentSms || 0}`);
+    if (!sent) return;
   };
 
   // ==========================================
